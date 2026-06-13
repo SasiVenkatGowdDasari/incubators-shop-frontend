@@ -222,23 +222,39 @@ export default function MyOrders() {
                                             </div>
                                         </div>
 
-                                        {/* NEW: Product Information Box */}
+                                        {/* UPGRADED Product Information Box */}
                                         {product && (
-                                            <div className="flex items-center gap-4 bg-[#0B1120]/60 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-800/50 mb-5 group-hover:border-gray-700/50 transition-colors">
-                                                <div className="w-14 h-14 sm:w-20 sm:h-20 bg-black rounded-lg sm:rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-gray-800">
+                                            <div className="flex items-start gap-3 sm:gap-4 bg-[#0B1120]/60 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-800/50 mb-5 group-hover:border-gray-700/50 transition-colors">
+                                                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#111827] rounded-lg sm:rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-gray-800 shadow-inner">
                                                     {product.imageUrl ? (
-                                                        <img src={getImageUrl(product.imageUrl)} alt={product.title} className="w-full h-full object-contain p-1 opacity-80" />
+                                                        <img src={getImageUrl(product.imageUrl)} alt={product.title} className="w-full h-full object-contain p-1.5 opacity-90 group-hover:scale-105 transition-transform duration-300" />
                                                     ) : (
                                                         <span className="text-2xl opacity-50">📦</span>
                                                     )}
                                                 </div>
-                                                <div className="flex flex-col justify-center">
-                                                    <Link to={`/product/${product.id}`} className="text-white font-bold text-sm sm:text-base md:text-lg hover:text-blue-400 transition-colors line-clamp-1 mb-1.5">
+                                                <div className="flex flex-col justify-center flex-1 min-w-0">
+                                                    <Link to={`/product/${product.id}`} className="text-white font-bold text-sm sm:text-base md:text-lg hover:text-blue-400 transition-colors truncate mb-1.5">
                                                         {product.title}
                                                     </Link>
-                                                    <div className="flex flex-wrap items-center gap-2 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">
-                                                        <span className="bg-gray-800 px-2 py-0.5 rounded text-gray-400 border border-gray-700">Product ID: #{product.id}</span>
-                                                        <span className="bg-indigo-900/30 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Capacity: {product.capacity || 'N/A'}</span>
+                                                    
+                                                    {/* SLEEK, RESPONSIVE BADGE SYSTEM */}
+                                                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800/80 text-gray-300 border border-gray-700 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shadow-inner">
+                                                            <span className="text-gray-500">ID:</span> #{product.id}
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-900/30 text-indigo-300 border border-indigo-500/30 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shadow-inner">
+                                                            <span className="text-indigo-500/80">CAP:</span> {product.capacity || 'N/A'}
+                                                        </span>
+                                                        {product.type && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-900/30 text-blue-300 border border-blue-500/30 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shadow-inner">
+                                                                <span className="text-blue-500/80">TYPE:</span> {product.type}
+                                                            </span>
+                                                        )}
+                                                        {product.material && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-300 border border-emerald-500/30 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shadow-inner">
+                                                                <span className="text-emerald-500/80">MAT:</span> {product.material}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
