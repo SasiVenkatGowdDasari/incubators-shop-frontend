@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { CartContext } from '../context/CartContext';
@@ -192,8 +192,11 @@ export default function ProductDetails() {
         </div>
     );
 
-    const stockStatus = product.stockQuantity === 0 ? 'OUT OF STOCK' : product.stockQuantity < 5 ? 'LIMITED STOCK' : 'IN STOCK';
-    const badgeColor = product.stockQuantity === 0 ? 'bg-red-500/10 text-red-400 border-red-500/20' : product.stockQuantity < 5 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 'bg-green-500/10 text-green-400 border-green-500/20';
+    // FIX: Strictly check if 'user' exists before evaluating cart status
+    const isInCart = user ? cart.some(item => item.id === product.id) : false;
+    const isOutOfStock = product.stockQuantity <= 0;
+    const stockStatus = isOutOfStock ? 'OUT OF STOCK' : product.stockQuantity < 5 ? 'LIMITED STOCK' : 'IN STOCK';
+    const badgeColor = isOutOfStock ? 'bg-red-500/10 text-red-400 border-red-500/20' : product.stockQuantity < 5 ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 'bg-green-500/10 text-green-400 border-green-500/20';
 
     const averageRating = reviews.length > 0
         ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1)
@@ -234,7 +237,6 @@ export default function ProductDetails() {
                     {/* MEDIA COLUMN */}
                     <div className="lg:w-1/2">
                         <FadeInScroll delay={100} direction="left">
-                            {/* h-60 on mobile limits the height so it doesn't take up the whole screen */}
                             <div className="bg-[#111827]/60 backdrop-blur-md rounded-2xl sm:rounded-3xl p-4 sm:p-8 relative flex items-center justify-center h-60 sm:h-auto sm:aspect-4/3 border border-gray-800 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.5)] overflow-hidden group">
                                 <div className="absolute inset-0 bg-linear-to-tr from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
 
@@ -339,7 +341,6 @@ export default function ProductDetails() {
                                 <span className={`px-2.5 sm:px-3 py-1 text-[9px] sm:text-[10px] font-extrabold border rounded-full uppercase tracking-widest shadow-inner shrink-0 ${badgeColor}`}>
                                     {stockStatus}
                                 </span>
-                                {/* Rating pushed to the right on mobile */}
                                 <div className="flex items-center gap-1 ml-auto bg-gray-800/50 px-2.5 py-1 rounded-full border border-gray-700/50 shrink-0">
                                     <span className="text-yellow-400 text-[10px] sm:text-[11px] font-bold">{averageRating}</span>
                                     <span className="text-yellow-400 text-[9px] sm:text-[10px]">★</span>
@@ -347,9 +348,7 @@ export default function ProductDetails() {
                                 </div>
                             </div>
 
-                            {/* NEW HORIZONTAL PRICE & DELIVERY BOX FOR MOBILE */}
                             <div className="lg:hidden flex flex-row items-center justify-between p-4 sm:p-5 bg-linear-to-r from-[#111827] to-transparent rounded-xl sm:rounded-2xl border-l-4 border-blue-500 mb-6 gap-2">
-                                {/* Left Side: Price & Savings */}
                                 <div className="flex flex-col items-start justify-center">
                                     <span className="text-3xl sm:text-4xl font-black text-white drop-shadow-lg leading-none mb-1">₹{product.currentPrice}</span>
                                     {product.actualPrice > product.currentPrice && (
@@ -360,10 +359,8 @@ export default function ProductDetails() {
                                     )}
                                 </div>
                                 
-                                {/* Vertical Divider */}
                                 <div className="w-px h-10 bg-gray-700/50 mx-1"></div>
 
-                                {/* Right Side: Delivery & Warranty */}
                                 <div className="flex flex-col gap-2 items-start justify-center shrink-0">
                                     <div className="text-[9px] sm:text-[10px] font-bold text-green-400 flex items-center gap-1.5">
                                         <span className="text-sm">🚚</span> 
@@ -408,26 +405,27 @@ export default function ProductDetails() {
                                     <button
                                         onClick={() => {
                                             if (!user) {
+                                                sessionStorage.setItem('pendingCartItem', JSON.stringify(product));
                                                 navigate('/login');
                                                 return;
                                             }
-                                            if (cart.some(item => item.id === product.id)) {
+                                            if (isInCart) {
                                                 navigate('/cart');
                                             } else {
                                                 addToCart(product);
                                             }
                                         }}
-                                        disabled={product.stockQuantity <= 0 && !cart.some(item => item.id === product.id)}
-                                        className={`w-full py-4 sm:py-5 rounded-xl font-black text-white text-base sm:text-lg tracking-wide transition-all duration-300 transform flex items-center justify-center gap-2 sm:gap-3 ${product.stockQuantity > 0 || cart.some(item => item.id === product.id)
-                                                ? (cart.some(item => item.id === product.id)
+                                        disabled={isOutOfStock && !isInCart}
+                                        className={`w-full py-4 sm:py-5 rounded-xl font-black text-white text-base sm:text-lg tracking-wide transition-all duration-300 transform flex items-center justify-center gap-2 sm:gap-3 ${!isOutOfStock || isInCart
+                                                ? (isInCart
                                                     ? 'bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-[0_0_20px_rgba(22,163,74,0.4)] hover:shadow-[0_0_30px_rgba(22,163,74,0.6)] sm:hover:-translate-y-1 active:scale-95'
                                                     : 'bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_0_20px_rgba(59,130,246,0.4)] hover:shadow-[0_0_30px_rgba(59,130,246,0.6)] sm:hover:-translate-y-1 active:scale-95')
                                                 : 'bg-gray-800 cursor-not-allowed text-gray-500 border border-gray-700'
                                             }`}
                                     >
-                                        {product.stockQuantity <= 0 && !cart.some(item => item.id === product.id)
+                                        {isOutOfStock && !isInCart
                                             ? 'Currently Out of Stock'
-                                            : (cart.some(item => item.id === product.id)
+                                            : (isInCart
                                                 ? <><span>🛒</span> Proceed To Cart</>
                                                 : <><span>➕</span> Add To Cart</>)
                                         }
@@ -487,7 +485,7 @@ export default function ProductDetails() {
                 </FadeInScroll>
             </div>
 
-            {/* REVIEW MODAL - Responsive layout optimized */}
+            {/* REVIEW MODAL */}
             {selectedReview && (
                 <div
                     className="fixed inset-0 z-100 bg-black/90 backdrop-blur-xl flex items-center justify-center p-0 sm:p-4 md:p-8 transition-opacity duration-300"
@@ -497,7 +495,6 @@ export default function ProductDetails() {
                         className="bg-[#0B1120] sm:border sm:border-gray-700/50 sm:rounded-3xl w-full h-full sm:h-[85vh] max-w-6xl sm:max-h-225 flex flex-col md:flex-row overflow-hidden relative shadow-[0_0_100px_rgba(0,0,0,0.8)] transform transition-transform duration-500"
                         onClick={e => e.stopPropagation()}
                     >
-                        {/* Close button placement for mobile vs desktop */}
                         <button
                             onClick={() => setSelectedReview(null)}
                             className="absolute top-4 right-4 w-10 h-10 sm:w-12 sm:h-12 bg-black/60 hover:bg-red-500 text-white rounded-full z-50 flex items-center justify-center text-xl sm:text-2xl transition-all duration-300 backdrop-blur-md border border-white/10 shadow-2xl"
@@ -505,7 +502,6 @@ export default function ProductDetails() {
                             &times;
                         </button>
 
-                        {/* Media Section: Adjusted height for mobile so text below is visible */}
                         <div className="w-full md:w-3/5 h-[45vh] md:h-full bg-black relative flex items-center justify-center group overflow-hidden shrink-0">
                             {selectedReview.media.length > 0 ? (
                                 <>
@@ -541,7 +537,6 @@ export default function ProductDetails() {
                             )}
                         </div>
 
-                        {/* Text Section: Scrollable area for mobile */}
                         <div className="w-full md:w-2/5 p-6 sm:p-8 md:p-12 flex flex-col bg-[#111827] border-t md:border-t-0 md:border-l border-gray-800 flex-1 overflow-y-auto custom-scrollbar relative">
                             <div className="sticky top-0 left-0 right-0 h-4 bg-linear-to-b from-[#111827] to-transparent z-10 pointer-events-none -mt-6 sm:-mt-8 md:-mt-12 mb-4 sm:mb-8"></div>
 

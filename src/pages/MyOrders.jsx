@@ -4,6 +4,8 @@ import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import ReviewModal from '../components/ReviewModal';
 
+const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
 // ========================================================
 // ADVANCED SCROLL ANIMATION WRAPPER
 // ========================================================
@@ -48,6 +50,7 @@ const FadeInScroll = ({ children, delay = 0, direction = 'up' }) => {
 export default function MyOrders() {
     const { user } = useContext(AuthContext);
     const [orders, setOrders] = useState([]);
+    const [productsMap, setProductsMap] = useState({}); // To store product details
     const [loading, setLoading] = useState(true);
     const [reviewModal, setReviewModal] = useState(null); 
     const [reviewedIds, setReviewedIds] = useState([]);
@@ -57,19 +60,32 @@ export default function MyOrders() {
     const [otpMessage, setOtpMessage] = useState({ type: '', text: '' });
 
     useEffect(() => {
-        const fetchOrders = async () => {
+        const fetchData = async () => {
             try {
-                const response = await api.get(`/orders/user/${user.id}`);
+                // Fetch orders and products simultaneously for better performance
+                const [ordersResponse, productsResponse] = await Promise.all([
+                    api.get(`/orders/user/${user.id}`),
+                    api.get('/products')
+                ]);
+
+                // Map products by ID for quick lookup O(1)
+                const pMap = {};
+                productsResponse.data.forEach(p => {
+                    pMap[p.id] = p;
+                });
+                setProductsMap(pMap);
+
                 // Sort orders by most recent first
-                const sortedOrders = response.data.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
+                const sortedOrders = ordersResponse.data.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
                 setOrders(sortedOrders);
+                
                 setLoading(false);
             } catch (err) {
                 setLoading(false);
                 console.error(err);
             }
         };
-        if (user) fetchOrders();
+        if (user) fetchData();
     }, [user]);
 
     const handleOtpChange = (orderId, value) => {
@@ -88,6 +104,7 @@ export default function MyOrders() {
         try {
             await api.post(`/orders/${orderId}/verify-delivery`, { enteredOtp: otpCode });
             setOtpMessage({ type: 'success', text: 'Delivery Verified! Order Complete.' });
+            
             // Refresh orders to fetch the new Delivered Date from the backend
             const response = await api.get(`/orders/user/${user.id}`);
             const sortedOrders = response.data.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
@@ -105,6 +122,15 @@ export default function MyOrders() {
             case 'IN_TRANSIT': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30 shadow-[0_0_10px_rgba(234,179,8,0.2)]';
             default: return 'bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]';
         }
+    };
+
+    // Helper to extract image URL correctly
+    const getImageUrl = (urlStr) => {
+        if (!urlStr) return null;
+        const firstUrl = urlStr.split(',')[0].trim();
+        if (firstUrl.startsWith('http')) return firstUrl;
+        const cleanPath = firstUrl.startsWith('/') ? firstUrl : `/uploads/${firstUrl}`.replace('/uploads/uploads/', '/uploads/');
+        return `${BACKEND_URL}${cleanPath}`;
     };
 
     if (loading) return (
@@ -175,111 +201,137 @@ export default function MyOrders() {
                             </div>
                         </FadeInScroll>
                     ) : (
-                        orders.map((order, index) => (
-                            <FadeInScroll key={order.id} delay={150 + (index * 50)}>
-                                <div className="bg-[#111827]/80 backdrop-blur-xl p-5 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border border-gray-800 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.5)] hover:border-blue-500/40 transition-all duration-500 group relative overflow-hidden">
-                                    
-                                    {/* Left Accent Bar */}
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 sm:w-1.5 bg-linear-to-b from-blue-500 to-indigo-600 opacity-50 group-hover:opacity-100 transition-opacity"></div>
-
-                                    {/* Top Row: Order ID & Status (Always horizontal now) */}
-                                    <div className="flex flex-row justify-between items-center gap-3 sm:gap-4 border-b border-gray-800/80 pb-4 sm:pb-5 mb-4 sm:mb-5">
-                                        <div>
-                                            <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-black tracking-widest mb-0.5 sm:mb-1">Order ID</p>
-                                            <p className="font-extrabold text-white text-base sm:text-lg tracking-wide">#{order.id}</p>
-                                        </div>
-                                        <div className={`px-3 sm:px-4 py-1.5 rounded-full text-[9px] sm:text-xs font-black tracking-widest border uppercase text-center shrink-0 ${getStatusStyle(order.status)}`}>
-                                            {order.status}
-                                        </div>
-                                    </div>
-
-                                    {/* Middle Row: Date, Qty, Total (Single Row) + Actions */}
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-6">
+                        orders.map((order, index) => {
+                            const product = productsMap[order.productId]; // Get product info
+                            
+                            return (
+                                <FadeInScroll key={order.id} delay={150 + (index * 50)}>
+                                    <div className="bg-[#111827]/80 backdrop-blur-xl p-5 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border border-gray-800 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.5)] hover:border-blue-500/40 transition-all duration-500 group relative overflow-hidden">
                                         
-                                        {/* ONE ROW for Date, Quantity, Total */}
-                                        <div className="flex flex-row justify-between items-start w-full md:w-3/4 pr-0 md:pr-6">
-                                            <div className="flex-1">
-                                                <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Date</p>
-                                                <p className="text-xs sm:text-sm text-gray-300 font-medium">
-                                                    {order.orderDate ? new Date(order.orderDate).toLocaleString('en-IN', {
-                                                        day: '2-digit', month: 'short', year: 'numeric'
-                                                    }) : "N/A"}
-                                                </p>
-                                                {order.status === 'DELIVERED' && order.deliveredDate && (
-                                                    <p className="text-[9px] sm:text-[10px] text-green-400 font-bold mt-1 sm:mt-1.5 flex items-center gap-1">
-                                                        <span>✓</span> {new Date(order.deliveredDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                        {/* Left Accent Bar */}
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 sm:w-1.5 bg-linear-to-b from-blue-500 to-indigo-600 opacity-50 group-hover:opacity-100 transition-opacity"></div>
+
+                                        {/* Top Row: Order ID & Status */}
+                                        <div className="flex flex-row justify-between items-center gap-3 sm:gap-4 border-b border-gray-800/80 pb-4 sm:pb-5 mb-4">
+                                            <div>
+                                                <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-black tracking-widest mb-0.5 sm:mb-1">Order ID</p>
+                                                <p className="font-extrabold text-white text-base sm:text-lg tracking-wide">#{order.id}</p>
+                                            </div>
+                                            <div className={`px-3 sm:px-4 py-1.5 rounded-full text-[9px] sm:text-xs font-black tracking-widest border uppercase text-center shrink-0 ${getStatusStyle(order.status)}`}>
+                                                {order.status}
+                                            </div>
+                                        </div>
+
+                                        {/* NEW: Product Information Box */}
+                                        {product && (
+                                            <div className="flex items-center gap-4 bg-[#0B1120]/60 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-800/50 mb-5 group-hover:border-gray-700/50 transition-colors">
+                                                <div className="w-14 h-14 sm:w-20 sm:h-20 bg-black rounded-lg sm:rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-gray-800">
+                                                    {product.imageUrl ? (
+                                                        <img src={getImageUrl(product.imageUrl)} alt={product.title} className="w-full h-full object-contain p-1 opacity-80" />
+                                                    ) : (
+                                                        <span className="text-2xl opacity-50">📦</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col justify-center">
+                                                    <Link to={`/product/${product.id}`} className="text-white font-bold text-sm sm:text-base md:text-lg hover:text-blue-400 transition-colors line-clamp-1 mb-1.5">
+                                                        {product.title}
+                                                    </Link>
+                                                    <div className="flex flex-wrap items-center gap-2 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">
+                                                        <span className="bg-gray-800 px-2 py-0.5 rounded text-gray-400 border border-gray-700">Product ID: #{product.id}</span>
+                                                        <span className="bg-indigo-900/30 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Capacity: {product.capacity || 'N/A'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Middle Row: Date, Qty, Total (Single Row) + Actions */}
+                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-6">
+                                            
+                                            {/* ONE ROW for Date, Quantity, Total */}
+                                            <div className="flex flex-row justify-between items-start w-full md:w-3/4 pr-0 md:pr-6">
+                                                <div className="flex-1">
+                                                    <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Date</p>
+                                                    <p className="text-xs sm:text-sm text-gray-300 font-medium">
+                                                        {order.orderDate ? new Date(order.orderDate).toLocaleString('en-IN', {
+                                                            day: '2-digit', month: 'short', year: 'numeric'
+                                                        }) : "N/A"}
                                                     </p>
+                                                    {order.status === 'DELIVERED' && order.deliveredDate && (
+                                                        <p className="text-[9px] sm:text-[10px] text-green-400 font-bold mt-1 sm:mt-1.5 flex items-center gap-1">
+                                                            <span>✓</span> {new Date(order.deliveredDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="flex-1 text-center sm:text-left">
+                                                    <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Quantity</p>
+                                                    <p className="font-bold text-white text-sm sm:text-lg">{order.quantity}<span className="text-gray-500 text-[9px] sm:text-sm ml-1 hidden sm:inline">Items</span></p>
+                                                </div>
+                                                
+                                                <div className="flex-1 text-right sm:text-left">
+                                                    <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Total</p>
+                                                    <p className="font-black text-transparent bg-clip-text bg-linear-to-r from-blue-400 to-indigo-400 text-base sm:text-xl">₹{order.totalAmount}</p>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Action Area (Review Indicator / Button) */}
+                                            <div className="flex items-center justify-end w-full md:w-1/4 mt-2 md:mt-0">
+                                                {order.adminReviewed ? (
+                                                    <div className="bg-blue-500/10 border border-blue-500/20 px-3 py-2 rounded-lg flex items-center justify-center w-full gap-2">
+                                                        <span className="text-blue-400 text-xs sm:text-sm font-bold tracking-wide">Admin Reviewed</span>
+                                                    </div>
+                                                ) : reviewedIds.includes(order.id) || order.userReviewed ? (
+                                                    <div className="bg-green-500/10 border border-green-500/20 px-3 py-2 rounded-lg flex items-center justify-center w-full gap-2">
+                                                        <span className="text-green-400 text-xs sm:text-sm font-bold tracking-wide">Reviewed</span>
+                                                        <span>🌟</span>
+                                                    </div>
+                                                ) : order.status === 'DELIVERED' && (
+                                                    <button
+                                                        onClick={() => setReviewModal({ productId: order.productId, orderId: order.id })}
+                                                        className="w-full bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 shadow-[0_0_15px_rgba(147,51,234,0.3)] active:scale-95 sm:hover:shadow-[0_0_20px_rgba(147,51,234,0.5)] transform sm:hover:-translate-y-1 flex items-center justify-center gap-2"
+                                                    >
+                                                        <span>✍️</span> Rate Product
+                                                    </button>
                                                 )}
                                             </div>
-                                            
-                                            <div className="flex-1 text-center sm:text-left">
-                                                <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Quantity</p>
-                                                <p className="font-bold text-white text-sm sm:text-lg">{order.quantity}<span className="text-gray-500 text-[9px] sm:text-sm ml-1 hidden sm:inline">Items</span></p>
-                                            </div>
-                                            
-                                            <div className="flex-1 text-right sm:text-left">
-                                                <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Total</p>
-                                                <p className="font-black text-transparent bg-clip-text bg-linear-to-r from-blue-400 to-indigo-400 text-base sm:text-xl">₹{order.totalAmount}</p>
-                                            </div>
                                         </div>
-                                        
-                                        {/* Action Area (Review Indicator / Button) */}
-                                        <div className="flex items-center justify-end w-full md:w-1/4 mt-2 md:mt-0">
-                                            {order.adminReviewed ? (
-                                                <div className="bg-blue-500/10 border border-blue-500/20 px-3 py-2 rounded-lg flex items-center justify-center w-full gap-2">
-                                                    <span className="text-blue-400 text-xs sm:text-sm font-bold tracking-wide">Admin Reviewed</span>
-                                                </div>
-                                            ) : reviewedIds.includes(order.id) || order.userReviewed ? (
-                                                <div className="bg-green-500/10 border border-green-500/20 px-3 py-2 rounded-lg flex items-center justify-center w-full gap-2">
-                                                    <span className="text-green-400 text-xs sm:text-sm font-bold tracking-wide">Reviewed</span>
-                                                    <span>🌟</span>
-                                                </div>
-                                            ) : order.status === 'DELIVERED' && (
-                                                <button
-                                                    onClick={() => setReviewModal({ productId: order.productId, orderId: order.id })}
-                                                    className="w-full bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 shadow-[0_0_15px_rgba(147,51,234,0.3)] active:scale-95 sm:hover:shadow-[0_0_20px_rgba(147,51,234,0.5)] transform sm:hover:-translate-y-1 flex items-center justify-center gap-2"
-                                                >
-                                                    <span>✍️</span> Rate Product
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
 
-                                    {/* OTP Section (For In Transit) */}
-                                    {order.status === 'IN_TRANSIT' && (
-                                        <div className="mt-5 sm:mt-6 bg-yellow-500/5 border border-yellow-500/20 rounded-xl sm:rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
-                                            {/* decorative background element */}
-                                            <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-2xl pointer-events-none"></div>
-                                            
-                                            <div className="text-xs sm:text-sm text-yellow-500/80 relative z-10">
-                                                <p className="font-extrabold text-yellow-400 text-sm sm:text-base mb-1 flex items-center gap-2">
-                                                    <span className="animate-pulse">🚚</span> Waiting for Delivery
-                                                </p>
-                                                <p className="leading-relaxed">Provide this 6-digit OTP to the delivery agent to receive your order.</p>
+                                        {/* OTP Section (For In Transit) */}
+                                        {order.status === 'IN_TRANSIT' && (
+                                            <div className="mt-5 sm:mt-6 bg-yellow-500/5 border border-yellow-500/20 rounded-xl sm:rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
+                                                {/* decorative background element */}
+                                                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                                                
+                                                <div className="text-xs sm:text-sm text-yellow-500/80 relative z-10">
+                                                    <p className="font-extrabold text-yellow-400 text-sm sm:text-base mb-1 flex items-center gap-2">
+                                                        <span className="animate-pulse">🚚</span> Waiting for Delivery
+                                                    </p>
+                                                    <p className="leading-relaxed">Provide this 6-digit OTP to the delivery agent to receive your order.</p>
+                                                </div>
+                                                
+                                                {/* Stacked Input + Button on Mobile, Horizontal on Desktop */}
+                                                <div className="flex flex-col sm:flex-row w-full md:w-auto shadow-lg relative z-10 gap-0">
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="OTP"
+                                                        maxLength="6"
+                                                        value={deliveryOtps[order.id] || ''}
+                                                        onChange={(e) => handleOtpChange(order.id, e.target.value.replace(/\D/g, ''))}
+                                                        className="w-full sm:w-36 px-4 py-2.5 sm:py-3 bg-[#0B1120] border border-gray-700 rounded-t-xl sm:rounded-t-none sm:rounded-l-xl focus:outline-none focus:border-yellow-500/50 text-white text-center tracking-[0.3em] font-bold text-sm sm:text-base"
+                                                    />
+                                                    <button 
+                                                        onClick={() => handleVerifyDelivery(order.id)}
+                                                        className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-yellow-950 px-6 py-2.5 sm:py-3 rounded-b-xl sm:rounded-b-none sm:rounded-r-xl font-black transition-colors text-sm sm:text-base active:bg-yellow-600"
+                                                    >
+                                                        VERIFY
+                                                    </button>
+                                                </div>
                                             </div>
-                                            
-                                            {/* Stacked Input + Button on Mobile, Horizontal on Desktop */}
-                                            <div className="flex flex-col sm:flex-row w-full md:w-auto shadow-lg relative z-10 gap-0">
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="OTP"
-                                                    maxLength="6"
-                                                    value={deliveryOtps[order.id] || ''}
-                                                    onChange={(e) => handleOtpChange(order.id, e.target.value.replace(/\D/g, ''))}
-                                                    className="w-full sm:w-36 px-4 py-2.5 sm:py-3 bg-[#0B1120] border border-gray-700 rounded-t-xl sm:rounded-t-none sm:rounded-l-xl focus:outline-none focus:border-yellow-500/50 text-white text-center tracking-[0.3em] font-bold text-sm sm:text-base"
-                                                />
-                                                <button 
-                                                    onClick={() => handleVerifyDelivery(order.id)}
-                                                    className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-yellow-950 px-6 py-2.5 sm:py-3 rounded-b-xl sm:rounded-b-none sm:rounded-r-xl font-black transition-colors text-sm sm:text-base active:bg-yellow-600"
-                                                >
-                                                    VERIFY
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </FadeInScroll>
-                        ))
+                                        )}
+                                    </div>
+                                </FadeInScroll>
+                            );
+                        })
                     )}
                 </div>
 

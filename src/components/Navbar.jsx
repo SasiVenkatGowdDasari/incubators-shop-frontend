@@ -123,9 +123,12 @@ export default function Navbar() {
                                 </button>
                             </div>
                         ) : (
-                            <div className="border-l border-gray-700/60 pl-6 ml-2">
-                                <Link to="/login" className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold px-6 py-2 rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_20px_rgba(59,130,246,0.5)] transform hover:-translate-y-0.5">
+                            <div className="flex items-center gap-2 sm:gap-4 border-l border-gray-700/60 pl-6 ml-2">
+                                <Link to="/login" className="text-gray-300 hover:text-white text-sm font-bold px-4 py-2 transition-colors duration-300">
                                     Login
+                                </Link>
+                                <Link to="/register" className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold px-6 py-2 rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_20px_rgba(59,130,246,0.5)] transform hover:-translate-y-0.5">
+                                    Register
                                 </Link>
                             </div>
                         )}
@@ -156,7 +159,7 @@ export default function Navbar() {
 
             {/* ================= MOBILE MENU OVERLAY & DROPDOWN ================= */}
             {/* Backdrop overlay to close menu by clicking outside */}
-            <div 
+            <div
                 className={`md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
                 onClick={() => setIsMobileMenuOpen(false)}
             />
@@ -177,7 +180,7 @@ export default function Navbar() {
                             <span className="text-xl">⚙️</span> Admin Panel
                         </Link>
                     )}
-                    
+
                     {isCustomer && (
                         <Link to="/my-orders" className="flex items-center gap-3 px-4 py-4 font-bold text-gray-300 hover:text-white hover:bg-gray-800/60 rounded-2xl transition-all duration-300 transform active:scale-95 bg-gray-900/20 border border-gray-800/50">
                             <span className="text-xl">📦</span> My Orders
@@ -201,9 +204,18 @@ export default function Navbar() {
                             </button>
                         </div>
                     ) : (
-                        <div className="mt-4 pt-6 border-t border-gray-800">
-                            <Link to="/login" className="flex items-center justify-center gap-2 w-full px-4 py-4 font-black text-white bg-linear-to-r from-blue-600 to-indigo-600 shadow-[0_10px_20px_-10px_rgba(59,130,246,0.6)] rounded-2xl text-center transition-all duration-300 transform active:scale-95 text-lg">
-                                <span>🔒</span> Login / Sign Up
+                        <div className="mt-4 pt-6 border-t border-gray-800 flex flex-col gap-3">
+                            <Link
+                                to="/login"
+                                className="flex items-center justify-center gap-2 w-full px-4 py-3.5 font-bold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 hover:border-indigo-400 hover:shadow-[0_0_15px_rgba(99,102,241,0.2)] rounded-2xl text-center transition-all duration-300 transform active:scale-95 text-base"
+                            >
+                                <span>🔑</span> Login
+                            </Link>
+                            <Link
+                                to="/register"
+                                className="flex items-center justify-center gap-2 w-full px-4 py-3.5 font-black text-white bg-linear-to-r from-blue-600 to-indigo-600 shadow-[0_10px_20px_-10px_rgba(59,130,246,0.6)] rounded-2xl text-center transition-all duration-300 transform active:scale-95 text-base"
+                            >
+                                <span>✨</span> Register
                             </Link>
                         </div>
                     )}

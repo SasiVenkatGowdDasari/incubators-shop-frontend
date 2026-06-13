@@ -241,14 +241,21 @@ export default function Cart() {
                                                 )}
                                             </div>
                                             
-                                            {/* Title & Price */}
+                                            {/* Title, ID, Capacity & Price */}
                                             <div className="flex flex-col grow justify-center">
-                                                <div className="flex justify-start gap-2 mb-1 sm:mb-2">
+                                                <div className="flex justify-start gap-2 mb-1.5 sm:mb-2">
                                                     <span className="px-2 py-0.5 text-[9px] sm:text-[10px] font-bold bg-blue-900/30 text-blue-400 border border-blue-500/30 rounded uppercase tracking-widest">{item.material || "Category"}</span>
                                                     
                                                     {!available && !isValidating && (
                                                         <span className="px-2 py-0.5 text-[9px] sm:text-[10px] font-bold bg-red-900/40 text-red-400 border border-red-500/50 rounded uppercase tracking-widest animate-pulse">Unavailable</span>
                                                     )}
+                                                </div>
+                                                
+                                                {/* NEW ID & CAPACITY ROW */}
+                                                <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider">
+                                                    <span className="font-mono bg-gray-800/50 px-2 py-0.5 rounded text-gray-300 border border-gray-700/50 shadow-inner">ID: #{item.id}</span>
+                                                    <span className="text-gray-600">•</span>
+                                                    <span className="bg-gray-800/50 px-2 py-0.5 rounded text-indigo-300 border border-indigo-900/30 shadow-inner">Capacity: {item.capacity || 'N/A'}</span>
                                                 </div>
                                                 
                                                 <Link to={available ? `/product/${item.id}` : '#'} className={`font-extrabold text-sm sm:text-xl line-clamp-2 mb-1.5 sm:mb-2 ${!available ? 'text-gray-500 cursor-not-allowed pointer-events-none' : 'text-white hover:text-blue-400 transition-colors'}`}>
@@ -260,7 +267,7 @@ export default function Cart() {
                                                         ₹{item.currentPrice || item.actualPrice}
                                                     </p>
                                                 ) : (
-                                                    <p className="text-[10px] sm:text-sm font-bold text-red-400 mt-1">Discontinued. Please remove.</p>
+                                                    <p className="text-[10px] sm:text-sm font-bold text-red-400 mt-1">Item not Available. Please remove.</p>
                                                 )}
                                             </div>
 
@@ -369,15 +376,6 @@ export default function Cart() {
                                         </div>
                                     )}
 
-                                    <div className="flex justify-between items-center">
-                                        <span>Shipping & Handling</span>
-                                        <span className="text-green-400 bg-green-500/10 px-2 py-0.5 rounded text-[10px] sm:text-xs font-bold border border-green-500/20 uppercase tracking-wider">Free</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span>Taxes</span>
-                                        <span className="text-white text-xs sm:text-base">Calculated at checkout</span>
-                                    </div>
-                                    
                                     <div className="h-px bg-gray-800 my-4 sm:my-6"></div>
 
                                     <div className="flex justify-between items-end">

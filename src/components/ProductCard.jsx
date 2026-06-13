@@ -22,11 +22,21 @@ export default function ProductCard({ product }) {
     const imageUrl = getMediaUrl(product.imageUrl);
     const isAdmin = user?.role === 'ADMIN';
 
-    const isInCart = cart.some(item => item.id === product.id);
+    // FIX: Strictly check if 'user' exists before evaluating cart status
+    const isInCart = user ? cart.some(item => item.id === product.id) : false;
     const isOutOfStock = product.stockQuantity <= 0;
 
     const handleActionClick = (e) => {
         e.preventDefault(); 
+        e.stopPropagation(); // Prevents the outer <Link> from triggering
+
+        // Check if logged in first!
+        if (!user) {
+            sessionStorage.setItem('pendingCartItem', JSON.stringify(product));
+            navigate('/login');
+            return;
+        }
+
         if (isInCart) {
             navigate('/cart');
         } else {
@@ -52,9 +62,6 @@ export default function ProductCard({ product }) {
 
     return (
         <Link to={`/product/${product.id}`} className="block h-full group">
-            {/* flex-row: Horizontal on Mobile 
-               sm:flex-col: Stacked Vertically on Laptop/Desktop 
-            */}
             <div className="flex flex-row sm:flex-col bg-[#111827] border border-gray-800 rounded-2xl overflow-hidden h-full sm:hover:border-gray-700 transition-all duration-300 relative shadow-lg group-hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
                 
                 {/* --- Top Left Badge (Stock Status) --- */}
@@ -93,7 +100,7 @@ export default function ProductCard({ product }) {
                             {product.title}
                         </h3>
 
-                        {/* Rating Row - Updated with vibrant colors */}
+                        {/* Rating Row */}
                         <div className="flex items-center gap-1.5 text-[10px] sm:text-sm mb-2">
                             <span className="text-blue-400 font-bold">{ratingValue.toFixed(1)}</span>
                             <div className="flex text-blue-500 tracking-widest">
@@ -121,7 +128,11 @@ export default function ProductCard({ product }) {
                     <div className="mt-auto flex gap-2">
                         {isAdmin ? (
                             <button 
-                                onClick={(e) => { e.preventDefault(); navigate(`/admin?tab=inventory&edit=${product.id}`); }}
+                                onClick={(e) => { 
+                                    e.preventDefault(); 
+                                    e.stopPropagation(); 
+                                    navigate(`/admin?tab=inventory&edit=${product.id}`); 
+                                }}
                                 className="w-full bg-gray-800 hover:bg-gray-700 text-white text-[10px] sm:text-xs font-bold py-2 sm:py-3 rounded-lg border border-gray-700 transition"
                             >
                                 Edit Product
@@ -153,7 +164,6 @@ export default function ProductCard({ product }) {
                             </>
                         )}
                     </div>
-
                 </div>
             </div>
         </Link>
