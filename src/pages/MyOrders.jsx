@@ -247,12 +247,12 @@ export default function MyOrders() {
                                                         </span>
                                                         {product.type && (
                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-900/30 text-blue-300 border border-blue-500/30 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shadow-inner">
-                                                                <span className="text-blue-500/80">TYPE:</span> {product.type}
+                                                                <span className="text-blue-500/80"></span> {product.type}
                                                             </span>
                                                         )}
                                                         {product.material && (
                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-900/30 text-emerald-300 border border-emerald-500/30 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shadow-inner">
-                                                                <span className="text-emerald-500/80">MAT:</span> {product.material}
+                                                                <span className="text-emerald-500/80"></span> {product.material}
                                                             </span>
                                                         )}
                                                     </div>
