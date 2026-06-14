@@ -138,7 +138,6 @@ function ProfileForm({ initialUser, updateUser }) {
 
     const [errors, setErrors] = useState({ email: '', mobileNumber: '' });
     const [otpFlow, setOtpFlow] = useState({
-        email: { sent: false, verified: false, code: '' },
         mobileNumber: { sent: false, verified: false, code: '' }
     });
 
@@ -154,9 +153,6 @@ function ProfileForm({ initialUser, updateUser }) {
         if (name === 'state') setFormData(prev => ({ ...prev, district: '' }));
 
         if (name === 'email') {
-            if (value !== initialUser.email) {
-                setOtpFlow(prev => ({ ...prev, email: { ...prev.email, verified: false, sent: false, code: '' } }));
-            }
             const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
             if (value && !emailRegex.test(value)) {
                 setErrors(prev => ({ ...prev, email: 'Must be a valid @gmail.com address' }));
@@ -171,7 +167,7 @@ function ProfileForm({ initialUser, updateUser }) {
         setFormData(prev => ({ ...prev, mobileNumber: rawDigits }));
 
         if (rawDigits !== cleanInitialMobile) {
-            setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, verified: false, sent: false, code: '' } }));
+            setOtpFlow(prev => ({ ...prev, mobileNumber: { sent: false, verified: false, code: '' } }));
         }
 
         if (rawDigits.length > 0 && rawDigits.length !== 10) {
@@ -189,57 +185,32 @@ function ProfileForm({ initialUser, updateUser }) {
         }
     };
 
-    const handleOtpChange = (field, value) => {
-        setOtpFlow(prev => ({ ...prev, [field]: { ...prev[field], code: value } }));
+    const handleOtpChange = (value) => {
+        setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, code: value } }));
     };
 
-    const handleSendOtp = async (field) => {
-        if (field === 'email') {
-            try {
-                showToast(`Sending secure OTP to ${formData.email}...`, 'info');
-                await api.post('/auth/send-email-otp', { email: formData.email });
-                showToast(`OTP sent to your email! Valid for 10 minutes.`, 'success');
-                setOtpFlow(prev => ({ ...prev, email: { ...prev.email, sent: true } }));
-            } catch (err) {
-                showToast("Failed to send OTP to email.", "error");
-                console.log(err);
-            }
-        } else {
-            try {
-                showToast(`Sending live OTP to +91 ${formData.mobileNumber}...`, 'info');
-                await api.post('/auth/send-mobile-otp', { mobileNumber: formData.mobileNumber });
-                showToast(`OTP sent to your mobile phone! Valid for 5 minutes.`, 'success');
-                setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, sent: true } }));
-            } catch (err) {
-                showToast(err.response?.data || "Failed to send OTP to mobile number.", "error");
-                console.log(err);
-            }
+    const handleSendOtp = async () => {
+        try {
+            showToast(`Sending live OTP to +91 ${formData.mobileNumber}...`, 'info');
+            await api.post('/auth/send-mobile-otp', { mobileNumber: formData.mobileNumber });
+            showToast(`OTP sent to your mobile phone! Valid for 5 minutes.`, 'success');
+            setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, sent: true } }));
+        } catch (err) {
+            showToast(err.response?.data || "Failed to send OTP to mobile number.", "error");
+            console.log(err);
         }
     };
 
-    const handleVerifyOtp = async (field) => {
-        if (field === 'email') {
-            try {
-                await api.post('/auth/verify-email-otp', { email: formData.email, otp: otpFlow.email.code });
-                setOtpFlow(prev => ({ 
-                    ...prev, 
-                    email: { ...prev.email, verified: true, sent: false, code: '' } 
-                }));
-                showToast(`Email verified successfully!`, 'success');
-            } catch (err) {
-                showToast(err.response?.data || "Invalid or expired OTP.", "error");
-            }
-        } else {
-            try {
-                await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobileNumber.code });
-                setOtpFlow(prev => ({ 
-                    ...prev, 
-                    mobileNumber: { ...prev.mobileNumber, verified: true, sent: false, code: '' } 
-                }));
-                showToast(`Mobile number verified successfully!`, 'success');
-            } catch (err) {
-                showToast(err.response?.data || "Invalid or expired mobile OTP.", "error");
-            }
+    const handleVerifyOtp = async () => {
+        try {
+            await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobileNumber.code });
+            setOtpFlow(prev => ({ 
+                ...prev, 
+                mobileNumber: { ...prev.mobileNumber, verified: true, sent: false, code: '' } 
+            }));
+            showToast(`Mobile number verified successfully!`, 'success');
+        } catch (err) {
+            showToast(err.response?.data || "Invalid or expired mobile OTP.", "error");
         }
     };
 
@@ -264,7 +235,6 @@ function ProfileForm({ initialUser, updateUser }) {
             updateUser({ ...initialUser, ...response.data }); 
             setIsEditing(false);
             setOtpFlow({
-                email: { sent: false, verified: false, code: '' },
                 mobileNumber: { sent: false, verified: false, code: '' }
             });
             showToast("Profile updated successfully!", "success");
@@ -288,7 +258,6 @@ function ProfileForm({ initialUser, updateUser }) {
             village: resetAddress.village
         });
         setOtpFlow({
-            email: { sent: false, verified: false, code: '' },
             mobileNumber: { sent: false, verified: false, code: '' }
         });
         setErrors({ email: '', mobileNumber: '' }); 
@@ -362,12 +331,10 @@ function ProfileForm({ initialUser, updateUser }) {
         }
     };
 
-    const isEmailChanged = formData.email.trim() !== (initialUser.email || '').trim();
     const isMobileChanged = cleanInitialMobile !== formData.mobileNumber && formData.mobileNumber.length === 10;
     const hasErrors = errors.email !== '' || errors.mobileNumber !== '';
     const isAddressIncomplete = !formData.state || !formData.district || !formData.village;
     const isSaveDisabled = hasErrors || isAddressIncomplete || isSubmitting ||
-                           (isEmailChanged && !otpFlow.email.verified) || 
                            (isMobileChanged && !otpFlow.mobileNumber.verified);
 
     const availableDistricts = INDIA_LOCATIONS[formData.state] || [];
@@ -447,7 +414,7 @@ function ProfileForm({ initialUser, updateUser }) {
                                             </div>
                                             
                                             {isEditing && isMobileChanged && !otpFlow.mobileNumber.verified && (
-                                                <button type="button" disabled={formData.mobileNumber.length !== 10} onClick={() => handleSendOtp('mobileNumber')} className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold transition-colors shrink-0 w-24 sm:w-32">
+                                                <button type="button" disabled={formData.mobileNumber.length !== 10} onClick={handleSendOtp} className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold transition-colors shrink-0 w-24 sm:w-32">
                                                     {otpFlow.mobileNumber.sent ? 'Resend OTP' : 'Send OTP'}
                                                 </button>
                                             )}
@@ -462,41 +429,21 @@ function ProfileForm({ initialUser, updateUser }) {
                                     
                                     <div className={`overflow-hidden transition-all duration-300 ${isEditing && isMobileChanged && otpFlow.mobileNumber.sent && !otpFlow.mobileNumber.verified ? 'max-h-20 mt-2 sm:mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="flex gap-2 sm:gap-3">
-                                            <input placeholder="6-digit OTP" maxLength="6" value={otpFlow.mobileNumber.code} onChange={(e) => handleOtpChange('mobileNumber', e.target.value.replace(/\D/g, ''))} className={`${inputClass} text-center tracking-widest`} />
-                                            <button type="button" onClick={() => handleVerifyOtp('mobileNumber')} className="bg-green-600 hover:bg-green-500 text-white px-4 sm:px-6 rounded-xl text-sm font-bold transition shrink-0">Verify</button>
+                                            <input placeholder="6-digit OTP" maxLength="6" value={otpFlow.mobileNumber.code} onChange={(e) => handleOtpChange(e.target.value.replace(/\D/g, ''))} className={`${inputClass} text-center tracking-widest`} />
+                                            <button type="button" onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 text-white px-4 sm:px-6 rounded-xl text-sm font-bold transition shrink-0">Verify</button>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Email Address */}
+                                {/* Email Address (No OTP verification attached) */}
                                 <div>
-                                    <label className="block text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-1.5 ml-1">Email Address</label>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex gap-2 sm:gap-3">
-                                            <div className="relative w-full">
-                                                <input name="email" type="email" disabled={!isEditing} value={formData.email} onChange={handleChange} className={`${inputClass} ${errors.email ? 'border-red-500' : ''}`} />
-                                            </div>
-
-                                            {isEditing && isEmailChanged && !otpFlow.email.verified && (
-                                                <button type="button" disabled={errors.email !== '' || formData.email.trim() === ''} onClick={() => handleSendOtp('email')} className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold transition-colors shrink-0 w-24 sm:w-32">
-                                                    {otpFlow.email.sent ? 'Resend OTP' : 'Send OTP'}
-                                                </button>
-                                            )}
-                                            {isEditing && isEmailChanged && otpFlow.email.verified && (
-                                                <div className="bg-green-500/20 text-green-400 px-2 sm:px-4 rounded-xl flex items-center justify-center shrink-0 w-24 sm:w-32 text-[10px] sm:text-xs font-bold border border-green-500/30">
-                                                    ✓ Verified
-                                                </div>
-                                            )}
-                                        </div>
-                                        {errors.email && <p className="text-red-400 text-[10px] uppercase font-bold ml-1">{errors.email}</p>}
+                                    <label className=" text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-1.5 ml-1 flex justify-between">
+                                        <span>Email Address <span className="text-gray-600 normal-case ml-1">(Optional)</span></span>
+                                    </label>
+                                    <div className="relative w-full">
+                                        <input name="email" type="email" disabled={!isEditing} value={formData.email} onChange={handleChange} placeholder="example@gmail.com" className={`${inputClass} ${errors.email ? 'border-red-500' : ''}`} />
                                     </div>
-                                    
-                                    <div className={`overflow-hidden transition-all duration-300 ${isEditing && isEmailChanged && otpFlow.email.sent && !otpFlow.email.verified ? 'max-h-20 mt-2 sm:mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
-                                        <div className="flex gap-2 sm:gap-3">
-                                            <input placeholder="6-digit OTP" maxLength="6" value={otpFlow.email.code} onChange={(e) => handleOtpChange('email', e.target.value.replace(/\D/g, ''))} className={`${inputClass} text-center tracking-widest`} />
-                                            <button type="button" onClick={() => handleVerifyOtp('email')} className="bg-green-600 hover:bg-green-500 text-white px-4 sm:px-6 rounded-xl text-sm font-bold transition shrink-0">Verify</button>
-                                        </div>
-                                    </div>
+                                    {errors.email && <p className="text-red-400 text-[10px] uppercase font-bold ml-1 mt-1">{errors.email}</p>}
                                 </div>
                             </div>
                         </div>

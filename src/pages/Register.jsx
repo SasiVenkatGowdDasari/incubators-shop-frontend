@@ -85,9 +85,9 @@ export default function Register() {
     const [showPass, setShowPass] = useState(false);
     const [showConfPass, setShowConfPass] = useState(false);
     
+    // Removed Email from otpFlow entirely
     const [otpFlow, setOtpFlow] = useState({
-        mobile: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' },
-        email: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' }
+        mobile: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' }
     });
     
     const [error, setError] = useState('');
@@ -109,88 +109,55 @@ export default function Register() {
             setFormData(prev => ({ ...prev, [name]: digits }));
             setOtpFlow(prev => ({ ...prev, mobile: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } }));
             setError('');
-        } 
-        else if (name === 'email') {
-            setFormData(prev => ({ ...prev, [name]: value }));
-            setOtpFlow(prev => ({ ...prev, email: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } }));
-            setError('');
-        }
-        else {
+        } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
 
-    const handleCheckExists = async (type) => {
+    // Refactored to only check Mobile
+    const handleCheckExists = async () => {
         setError('');
-        setOtpFlow(prev => ({ ...prev, [type]: { ...prev[type], checking: true } }));
+        setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: true } }));
 
         try {
-            if (type === 'mobile') {
-                await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
-            } else {
-                await api.post('/auth/check-email', { email: formData.email }); 
-            }
+            await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
             
-            setOtpFlow(prev => ({ ...prev, [type]: { ...prev[type], checking: false, checked: true, isAvailable: false } }));
+            setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: false } }));
+            setError('This mobile number is already registered. Please login.');
             
-            if (type === 'mobile') {
-                setError('This mobile number is already registered. Please login.');
-            } else {
-                setError('This email is already registered. Please change the email or leave it blank.');
-            }
         } catch (err) {
             if (err.response?.status === 404) {
-                setOtpFlow(prev => ({ ...prev, [type]: { ...prev[type], checking: false, checked: true, isAvailable: true } }));
+                setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: true } }));
             } else {
-                setError(`Failed to check ${type}. Please try again.`);
-                setOtpFlow(prev => ({ ...prev, [type]: { ...prev[type], checking: false } }));
+                setError(`Failed to check mobile number. Please try again.`);
+                setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false } }));
             }
         }
     };
 
-    const handleSendOtp = async (type) => {
+    // Refactored to only send Mobile OTP
+    const handleSendOtp = async () => {
         setError('');
-        if (type === 'email') {
-            try {
-                showToast(`Sending secure OTP to ${formData.email}...`, 'info');
-                await api.post('/auth/send-email-otp', { email: formData.email });
-                showToast(`OTP sent to your email! Valid for 10 minutes.`, 'success');
-                setOtpFlow(prev => ({ ...prev, email: { ...prev.email, sent: true, code: '' } }));
-            } catch (err) {
-                showToast("Failed to send OTP to email. Please check the address.", "error");
-                console.log(err);
-            }
-        } else {
-            try {
-                showToast(`Sending secure OTP to +91 ${formData.mobileNumber}...`, 'info');
-                await api.post('/auth/send-mobile-otp', { mobileNumber: formData.mobileNumber });
-                showToast(`Live OTP dispatched to mobile! Valid for 5 minutes.`, 'success');
-                setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, sent: true, code: '' } }));
-            } catch (err) {
-                showToast(err.response?.data || "Failed to route OTP to your cellular network.", "error");
-                console.log(err);
-            }
+        try {
+            showToast(`Sending secure OTP to +91 ${formData.mobileNumber}...`, 'info');
+            await api.post('/auth/send-mobile-otp', { mobileNumber: formData.mobileNumber });
+            showToast(`Live OTP dispatched to mobile! Valid for 5 minutes.`, 'success');
+            setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, sent: true, code: '' } }));
+        } catch (err) {
+            showToast(err.response?.data || "Failed to route OTP to your cellular network.", "error");
+            console.log(err);
         }
     };
 
-    const handleVerifyOtp = async (type) => {
+    // Refactored to only verify Mobile OTP
+    const handleVerifyOtp = async () => {
         setError('');
-        if (type === 'email') {
-            try {
-                await api.post('/auth/verify-email-otp', { email: formData.email, otp: otpFlow.email.code });
-                setOtpFlow(prev => ({ ...prev, email: { ...prev.email, verified: true, sent: false, code: '' } }));
-                showToast(`Email verified successfully!`, 'success');
-            } catch (err) {
-                showToast(err.response?.data || `Invalid or Expired OTP.`, 'error');
-            }
-        } else {
-            try {
-                await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobile.code });
-                setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, verified: true, sent: false, code: '' } }));
-                showToast(`Mobile Number verified successfully!`, 'success');
-            } catch (err) {
-                showToast(err.response?.data || `Invalid or Expired mobile verification code.`, 'error');
-            }
+        try {
+            await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobile.code });
+            setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, verified: true, sent: false, code: '' } }));
+            showToast(`Mobile Number verified successfully!`, 'success');
+        } catch (err) {
+            showToast(err.response?.data || `Invalid or Expired mobile verification code.`, 'error');
         }
     };
 
@@ -201,7 +168,6 @@ export default function Register() {
         if (formData.password !== formData.confirmPassword) return setError("Passwords do not match!");
         if (!/^(?=.*[A-Z])(?=.*\d).{8,}$/.test(formData.password)) return setError("Password must be 8+ characters, contain at least 1 uppercase letter and 1 number.");
         if (!otpFlow.mobile.verified) return setError("You must verify your mobile number to register.");
-        if (formData.email.trim() !== '' && !otpFlow.email.verified) return setError("You entered an email. Please verify it, or clear the field to skip.");
 
         setIsSubmitting(true);
         const fullAddress = `${formData.village}, ${formData.district}, ${formData.state}`;
@@ -261,11 +227,11 @@ export default function Register() {
                             
                             {!otpFlow.mobile.verified ? (
                                 !otpFlow.mobile.checked ? (
-                                    <button type="button" disabled={formData.mobileNumber.length !== 10 || otpFlow.mobile.checking} onClick={() => handleCheckExists('mobile')} className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 rounded-xl font-bold transition-colors shrink-0 w-28 text-sm">
+                                    <button type="button" disabled={formData.mobileNumber.length !== 10 || otpFlow.mobile.checking} onClick={handleCheckExists} className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 rounded-xl font-bold transition-colors shrink-0 w-28 text-sm">
                                         {otpFlow.mobile.checking ? 'Checking...' : 'Check'}
                                     </button>
                                 ) : otpFlow.mobile.isAvailable ? (
-                                    <button type="button" onClick={() => handleSendOtp('mobile')} className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl font-bold transition-colors shrink-0 w-28 text-sm">
+                                    <button type="button" onClick={handleSendOtp} className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl font-bold transition-colors shrink-0 w-28 text-sm">
                                         {otpFlow.mobile.sent ? 'Resend OTP' : 'Send OTP'}
                                     </button>
                                 ) : (
@@ -283,49 +249,29 @@ export default function Register() {
                         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${otpFlow.mobile.sent ? 'max-h-20 mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                             <div className="flex gap-3">
                                 <input type="text" placeholder="Enter 6-digit OTP" maxLength="6" className={`${inputClass} text-center tracking-widest font-bold`} value={otpFlow.mobile.code} onChange={(e) => setOtpFlow(p => ({...p, mobile: {...p.mobile, code: e.target.value.replace(/\D/g, '')}}))} />
-                                <button type="button" onClick={() => handleVerifyOtp('mobile')} className="bg-green-600 hover:bg-green-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0">
+                                <button type="button" onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0">
                                     Verify
                                 </button>
                             </div>
                         </div>
                     </div>
 
-                    {/* ================= EMAIL SECTION ================= */}
+                    {/* ================= EMAIL SECTION (No OTP) ================= */}
                     <div className="p-4 rounded-2xl bg-gray-800/30 border border-gray-700/50">
                         <label className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 flex justify-between">
                             <span>Email Address <span className="text-gray-600 normal-case ml-1">(Optional)</span></span>
                         </label>
                         <div className="flex gap-3">
-                            <input type="email" name="email" placeholder="example@gmail.com" className={inputClass} value={formData.email} onChange={handleFormChange} disabled={otpFlow.email.verified} />
-                            
-                            {formData.email.length > 0 && !otpFlow.email.verified ? (
-                                !otpFlow.email.checked ? (
-                                    <button type="button" disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) || otpFlow.email.checking} onClick={() => handleCheckExists('email')} className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 rounded-xl font-bold transition-colors shrink-0 w-28 text-sm">
-                                        {otpFlow.email.checking ? 'Checking...' : 'Check'}
-                                    </button>
-                                ) : otpFlow.email.isAvailable ? (
-                                    <button type="button" onClick={() => handleSendOtp('email')} className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-xl font-bold transition-colors shrink-0 w-28 text-sm">
-                                        {otpFlow.email.sent ? 'Resend OTP' : 'Send OTP'}
-                                    </button>
-                                ) : (
-                                    <button type="button" disabled className="bg-red-500/20 text-red-400 px-4 rounded-xl font-bold shrink-0 w-28 text-sm cursor-not-allowed">
-                                        Exists
-                                    </button>
-                                )
-                            ) : otpFlow.email.verified ? (
-                                <div className="bg-green-500/20 border border-green-500/50 text-green-400 px-4 rounded-xl font-bold flex items-center justify-center shrink-0 w-28 text-sm">
-                                    ✓ Verified
-                                </div>
-                            ) : null}
-                        </div>
-
-                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${otpFlow.email.sent ? 'max-h-20 mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
-                            <div className="flex gap-3">
-                                <input type="text" placeholder="Enter 6-digit OTP" maxLength="6" className={`${inputClass} text-center tracking-widest font-bold`} value={otpFlow.email.code} onChange={(e) => setOtpFlow(p => ({...p, email: {...p.email, code: e.target.value.replace(/\D/g, '')}}))} />
-                                <button type="button" onClick={() => handleVerifyOtp('email')} className="bg-green-600 hover:bg-green-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0">
-                                    Verify
-                                </button>
-                            </div>
+                            <input 
+                                type="email" 
+                                name="email" 
+                                placeholder="example@gmail.com" 
+                                className={inputClass} 
+                                value={formData.email} 
+                                onChange={handleFormChange} 
+                                disabled={isFormLocked}
+                                tabIndex={isFormLocked ? -1 : 0}
+                            />
                         </div>
                     </div>
 
