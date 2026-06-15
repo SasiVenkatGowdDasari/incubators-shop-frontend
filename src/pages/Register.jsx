@@ -4,9 +4,6 @@ import api from '../services/api';
 import { INDIA_LOCATIONS } from '../utils/locations';
 import { ToastContext } from '../context/ToastContext'; 
 
-// ========================================================
-// SMART PREMIUM DROPDOWN (Viewport Detection Added)
-// ========================================================
 const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, tabIndex }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [dropDirection, setDropDirection] = useState('down');
@@ -23,7 +20,6 @@ const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, t
     const toggleDropdown = () => {
         if (disabled) return;
         
-        // Smart Viewport Detection Logic
         if (!isOpen && ref.current) {
             const rect = ref.current.getBoundingClientRect();
             const spaceBelow = window.innerHeight - rect.bottom;
@@ -85,12 +81,12 @@ export default function Register() {
     const [showPass, setShowPass] = useState(false);
     const [showConfPass, setShowConfPass] = useState(false);
     
-    // Removed Email from otpFlow entirely
     const [otpFlow, setOtpFlow] = useState({
         mobile: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' }
     });
     
     const [error, setError] = useState('');
+    const [mobileError, setMobileError] = useState(''); 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
 
@@ -107,37 +103,39 @@ export default function Register() {
         if (name === 'mobileNumber') {
             const digits = value.replace(/\D/g, '').slice(0, 10);
             setFormData(prev => ({ ...prev, [name]: digits }));
+            
+            // Instantly clear the verified state and errors when typing
             setOtpFlow(prev => ({ ...prev, mobile: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } }));
             setError('');
+            setMobileError('');
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
 
-    // Refactored to only check Mobile
     const handleCheckExists = async () => {
         setError('');
+        setMobileError('');
         setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: true } }));
 
         try {
             await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
-            
+            // 200 OK means it EXISTS. We block it!
             setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: false } }));
-            setError('This mobile number is already registered. Please login.');
-            
+            setMobileError('This mobile number is already registered. Please login.');
         } catch (err) {
             if (err.response?.status === 404) {
+                // 404 Not Found means it's available. Proceed to Send OTP.
                 setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: true } }));
             } else {
-                setError(`Failed to check mobile number. Please try again.`);
+                setMobileError(`Failed to check mobile number. Please try again.`);
                 setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false } }));
             }
         }
     };
 
-    // Refactored to only send Mobile OTP
     const handleSendOtp = async () => {
-        setError('');
+        setMobileError('');
         try {
             showToast(`Sending secure OTP to +91 ${formData.mobileNumber}...`, 'info');
             await api.post('/auth/send-mobile-otp', { mobileNumber: formData.mobileNumber });
@@ -145,19 +143,25 @@ export default function Register() {
             setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, sent: true, code: '' } }));
         } catch (err) {
             showToast(err.response?.data || "Failed to route OTP to your cellular network.", "error");
-            console.log(err);
         }
     };
 
-    // Refactored to only verify Mobile OTP
     const handleVerifyOtp = async () => {
-        setError('');
+        setMobileError('');
         try {
-            await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobile.code });
+            const response = await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobile.code });
+            
+            // STRICT CHECK: If backend returns true/false wrapped in a 200 OK
+            if (response.data === false || response.data === "false") {
+                throw new Error("Invalid or Expired mobile verification code.");
+            }
+            
             setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, verified: true, sent: false, code: '' } }));
             showToast(`Mobile Number verified successfully!`, 'success');
         } catch (err) {
-            showToast(err.response?.data || `Invalid or Expired mobile verification code.`, 'error');
+            const errorMsg = err.response?.data || err.message || "Invalid or Expired mobile verification code.";
+            setMobileError(errorMsg);
+            showToast(errorMsg, 'error');
         }
     };
 
@@ -222,7 +226,7 @@ export default function Register() {
                         <div className="flex gap-3">
                             <div className="relative w-full">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">+91</span>
-                                <input type="text" name="mobileNumber" placeholder="9876543210" maxLength="10" required className={`${inputClass} pl-12`} value={formData.mobileNumber} onChange={handleFormChange} disabled={otpFlow.mobile.verified} />
+                                <input type="text" name="mobileNumber" placeholder="9876543210" maxLength="10" required className={`${inputClass} pl-12 ${mobileError ? 'border-red-500 focus:border-red-500' : ''}`} value={formData.mobileNumber} onChange={handleFormChange} disabled={otpFlow.mobile.verified} />
                             </div>
                             
                             {!otpFlow.mobile.verified ? (
@@ -245,6 +249,13 @@ export default function Register() {
                                 </div>
                             )}
                         </div>
+                        
+                        {/* SPECIFIC MOBILE ERROR DISPLAY */}
+                        {mobileError && (
+                            <p className="text-red-400 text-[10px] uppercase font-bold mt-2 ml-1 animate-fade-in-up">
+                                {mobileError}
+                            </p>
+                        )}
 
                         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${otpFlow.mobile.sent ? 'max-h-20 mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                             <div className="flex gap-3">
@@ -326,28 +337,8 @@ export default function Register() {
                         <div className="space-y-4 pt-2">
                             <label className="block text-gray-400 text-xs font-bold uppercase tracking-widest mb-1 ml-1 border-b border-gray-800 pb-2">Delivery Address *</label>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                
-                                {/* CUSTOM UI DROPDOWNS */}
-                                <CustomSelect 
-                                    name="state"
-                                    value={formData.state}
-                                    options={Object.keys(INDIA_LOCATIONS)}
-                                    placeholder="Select State"
-                                    onChange={handleFormChange}
-                                    disabled={isFormLocked}
-                                    tabIndex={isFormLocked ? -1 : 0}
-                                />
-                                
-                                <CustomSelect 
-                                    name="district"
-                                    value={formData.district}
-                                    options={availableDistricts}
-                                    placeholder="Select District"
-                                    onChange={handleFormChange}
-                                    disabled={!formData.state || isFormLocked}
-                                    tabIndex={isFormLocked ? -1 : 0}
-                                />
-
+                                <CustomSelect name="state" value={formData.state} options={Object.keys(INDIA_LOCATIONS)} placeholder="Select State" onChange={handleFormChange} disabled={isFormLocked} tabIndex={isFormLocked ? -1 : 0} />
+                                <CustomSelect name="district" value={formData.district} options={availableDistricts} placeholder="Select District" onChange={handleFormChange} disabled={!formData.state || isFormLocked} tabIndex={isFormLocked ? -1 : 0} />
                             </div>
                             <input type="text" name="village" placeholder="Village / City / Street Name" className={inputClass} onChange={handleFormChange} value={formData.village} required={!isFormLocked} tabIndex={isFormLocked ? -1 : 0} />
                         </div>

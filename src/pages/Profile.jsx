@@ -7,20 +7,14 @@ import { INDIA_LOCATIONS } from '../utils/locations';
 
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
-// Helper to handle both local uploads and Cloudinary URLs safely
 const getMediaUrl = (urlStr) => {
     if (!urlStr) return '';
     const firstUrl = urlStr.split(',')[0].trim();
-    if (firstUrl.startsWith('http')) return firstUrl; // It's a Cloudinary URL
-    
-    // It's a local URL, clean it up and append the backend host
+    if (firstUrl.startsWith('http')) return firstUrl;
     const cleanPath = firstUrl.startsWith('/') ? firstUrl : `/uploads/${firstUrl}`.replace('/uploads/uploads/', '/uploads/');
     return `${BACKEND_URL}${cleanPath}`;
 };
 
-// ========================================================
-// SMART PREMIUM DROPDOWN (Viewport Detection Added)
-// ========================================================
 const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, tabIndex }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [dropDirection, setDropDirection] = useState('down'); 
@@ -36,12 +30,10 @@ const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, t
 
     const toggleDropdown = () => {
         if (disabled) return;
-        
         if (!isOpen && ref.current) {
             const rect = ref.current.getBoundingClientRect();
             const spaceBelow = window.innerHeight - rect.bottom;
             const spaceAbove = rect.top;
-            
             if (spaceBelow < 260 && spaceAbove > spaceBelow) {
                 setDropDirection('up');
             } else {
@@ -93,26 +85,19 @@ const parseAddress = (user) => {
         return { state: user.state, district: user.district, village: user.village };
     }
     const parts = (user.address || '').split(',').map(s => s.trim());
-    return {
-        village: parts[0] || '',
-        district: parts[1] || '',
-        state: parts[2] || ''
-    };
+    return { village: parts[0] || '', district: parts[1] || '', state: parts[2] || '' };
 };
 
 function ProfileForm({ initialUser, updateUser }) {
     const { showToast } = useContext(ToastContext); 
     const [isEditing, setIsEditing] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
-    
-    // Form Submission State
     const [isSubmitting, setIsSubmitting] = useState(false);
     
     const fileInputRef = useRef(null);
     const [imagePreview, setImagePreview] = useState(null); 
     const [selectedImageFile, setSelectedImageFile] = useState(null);
 
-    // Password Reset States
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
     const [passwordStep, setPasswordStep] = useState(1); 
     const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
@@ -137,8 +122,9 @@ function ProfileForm({ initialUser, updateUser }) {
     });
 
     const [errors, setErrors] = useState({ email: '', mobileNumber: '' });
+    
     const [otpFlow, setOtpFlow] = useState({
-        mobileNumber: { sent: false, verified: false, code: '' }
+        mobileNumber: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' }
     });
 
     useEffect(() => {
@@ -149,16 +135,10 @@ function ProfileForm({ initialUser, updateUser }) {
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
-
         if (name === 'state') setFormData(prev => ({ ...prev, district: '' }));
-
         if (name === 'email') {
             const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-            if (value && !emailRegex.test(value)) {
-                setErrors(prev => ({ ...prev, email: 'Must be a valid @gmail.com address' }));
-            } else {
-                setErrors(prev => ({ ...prev, email: '' }));
-            }
+            setErrors(prev => ({ ...prev, email: (value && !emailRegex.test(value)) ? 'Must be a valid @gmail.com address' : '' }));
         }
     };
 
@@ -166,9 +146,8 @@ function ProfileForm({ initialUser, updateUser }) {
         const rawDigits = e.target.value.replace(/\D/g, '').slice(0, 10);
         setFormData(prev => ({ ...prev, mobileNumber: rawDigits }));
 
-        if (rawDigits !== cleanInitialMobile) {
-            setOtpFlow(prev => ({ ...prev, mobileNumber: { sent: false, verified: false, code: '' } }));
-        }
+        // Instantly reset the verify flow and clear errors if they change the number back
+        setOtpFlow({ mobileNumber: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } });
 
         if (rawDigits.length > 0 && rawDigits.length !== 10) {
             setErrors(prev => ({ ...prev, mobileNumber: 'Must be exactly 10 digits' }));
@@ -185,32 +164,53 @@ function ProfileForm({ initialUser, updateUser }) {
         }
     };
 
-    const handleOtpChange = (value) => {
-        setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, code: value } }));
+    const handleCheckExists = async () => {
+        setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: true } }));
+        setErrors(prev => ({ ...prev, mobileNumber: '' }));
+        try {
+            await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
+            // 200 OK means it EXISTS. We block it!
+            setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: false, checked: true, isAvailable: false } }));
+            setErrors(prev => ({ ...prev, mobileNumber: 'Mobile number already exists, check with another one.' }));
+        } catch (err) {
+            if (err.response?.status === 404) {
+                // 404 Not Found means it's available. Proceed to Send OTP.
+                setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: false, checked: true, isAvailable: true } }));
+                setErrors(prev => ({ ...prev, mobileNumber: '' }));
+            } else {
+                setErrors(prev => ({ ...prev, mobileNumber: 'Failed to verify mobile availability.' }));
+                setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: false } }));
+            }
+        }
     };
 
     const handleSendOtp = async () => {
         try {
-            showToast(`Sending live OTP to +91 ${formData.mobileNumber}...`, 'info');
+            showToast(`Sending secure OTP to +91 ${formData.mobileNumber}...`, 'info');
             await api.post('/auth/send-mobile-otp', { mobileNumber: formData.mobileNumber });
             showToast(`OTP sent to your mobile phone! Valid for 5 minutes.`, 'success');
             setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, sent: true } }));
         } catch (err) {
             showToast(err.response?.data || "Failed to send OTP to mobile number.", "error");
-            console.log(err);
         }
     };
 
     const handleVerifyOtp = async () => {
         try {
-            await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobileNumber.code });
-            setOtpFlow(prev => ({ 
-                ...prev, 
-                mobileNumber: { ...prev.mobileNumber, verified: true, sent: false, code: '' } 
-            }));
+            const response = await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobileNumber.code });
+            
+            // STRICT CHECK: If backend returns true/false wrapped in a 200 OK
+            if (response.data === false || response.data === "false") {
+                throw new Error("Invalid or expired mobile OTP.");
+            }
+            
+            setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, verified: true, sent: false, code: '' } }));
+            setErrors(prev => ({ ...prev, mobileNumber: '' }));
             showToast(`Mobile number verified successfully!`, 'success');
         } catch (err) {
-            showToast(err.response?.data || "Invalid or expired mobile OTP.", "error");
+            const errorMsg = err.response?.data || err.message || "Invalid or expired mobile OTP.";
+            setErrors(prev => ({ ...prev, mobileNumber: errorMsg }));
+            showToast(errorMsg, "error");
         }
     };
 
@@ -223,24 +223,19 @@ function ProfileForm({ initialUser, updateUser }) {
         formDataToSend.append('mobileNumber', formData.mobileNumber); 
         formDataToSend.append('address', fullAddress);
         
-        if (selectedImageFile) {
-            formDataToSend.append('profilePicture', selectedImageFile);
-        }
+        if (selectedImageFile) formDataToSend.append('profilePicture', selectedImageFile);
 
         try {
             const response = await api.put(`/profile/${initialUser.id}`, formDataToSend, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            
             updateUser({ ...initialUser, ...response.data }); 
             setIsEditing(false);
-            setOtpFlow({
-                mobileNumber: { sent: false, verified: false, code: '' }
-            });
+            setOtpFlow({ mobileNumber: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } });
             showToast("Profile updated successfully!", "success");
         } catch (err) { 
-            console.error("Profile Update Error:", err);
             showToast("Failed to update profile. Please try again.", "error"); 
+            console.log(err)
         } finally {
             setIsSubmitting(false);
         }
@@ -257,18 +252,13 @@ function ProfileForm({ initialUser, updateUser }) {
             district: resetAddress.district,
             village: resetAddress.village
         });
-        setOtpFlow({
-            mobileNumber: { sent: false, verified: false, code: '' }
-        });
+        setOtpFlow({ mobileNumber: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } });
         setErrors({ email: '', mobileNumber: '' }); 
         setImagePreview(null);
         setSelectedImageFile(null); 
     };
 
-    const handlePasswordInputChange = (e) => {
-        const { name, value } = e.target;
-        setPasswordData(prev => ({ ...prev, [name]: value }));
-    };
+    const handlePasswordInputChange = (e) => setPasswordData(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
     const closePasswordModal = () => {
         setIsPasswordModalOpen(false);
@@ -282,21 +272,16 @@ function ProfileForm({ initialUser, updateUser }) {
 
     const handleVerifyOldPassword = async () => {
         setPasswordStatus({ type: '', message: '' });
-        if (!passwordData.oldPassword) {
-            setPasswordStatus({ type: 'error', message: 'Please enter your current password.' });
-            return;
-        }
+        if (!passwordData.oldPassword) return setPasswordStatus({ type: 'error', message: 'Please enter your current password.' });
 
         setIsPasswordVerifying(true);
         try {
-            await api.post(`/profile/${initialUser.id}/verify-password`, { 
-                password: passwordData.oldPassword 
-            });
-            
+            await api.post(`/profile/${initialUser.id}/verify-password`, { password: passwordData.oldPassword });
             setPasswordStatus({ type: '', message: '' });
             setPasswordStep(2);
         } catch (err) {
-            setPasswordStatus({ type: 'error', message: "Password incorrect.", err });
+            setPasswordStatus({ type: 'error', message: "Password incorrect." });
+            console.log(err)
         } finally {
             setIsPasswordVerifying(false);
         }
@@ -304,15 +289,8 @@ function ProfileForm({ initialUser, updateUser }) {
 
     const handleSaveNewPassword = async () => {
         setPasswordStatus({ type: '', message: '' });
-
-        if (passwordData.newPassword.length < 6) {
-            setPasswordStatus({ type: 'error', message: 'New password must be at least 6 characters.' });
-            return;
-        }
-        if (passwordData.newPassword !== passwordData.confirmPassword) {
-            setPasswordStatus({ type: 'error', message: 'New passwords do not match.' });
-            return;
-        }
+        if (passwordData.newPassword.length < 6) return setPasswordStatus({ type: 'error', message: 'New password must be at least 6 characters.' });
+        if (passwordData.newPassword !== passwordData.confirmPassword) return setPasswordStatus({ type: 'error', message: 'New passwords do not match.' });
 
         setIsPasswordSaving(true);
         try {
@@ -321,11 +299,10 @@ function ProfileForm({ initialUser, updateUser }) {
                 newPassword: passwordData.newPassword
             });
             setPasswordStatus({ type: 'success', message: 'Password updated successfully!' });
-            setTimeout(() => {
-                closePasswordModal();
-            }, 2000);
+            setTimeout(() => closePasswordModal(), 2000);
         } catch (err) {
-            setPasswordStatus({ type: 'error', message: "Failed to update password. Please try again.", err });
+            setPasswordStatus({ type: 'error', message: "Failed to update password. Please try again." });
+            console.log(err)
         } finally {
             setIsPasswordSaving(false);
         }
@@ -334,9 +311,8 @@ function ProfileForm({ initialUser, updateUser }) {
     const isMobileChanged = cleanInitialMobile !== formData.mobileNumber && formData.mobileNumber.length === 10;
     const hasErrors = errors.email !== '' || errors.mobileNumber !== '';
     const isAddressIncomplete = !formData.state || !formData.district || !formData.village;
-    const isSaveDisabled = hasErrors || isAddressIncomplete || isSubmitting ||
-                           (isMobileChanged && !otpFlow.mobileNumber.verified);
-
+    const isSaveDisabled = hasErrors || isAddressIncomplete || isSubmitting || (isMobileChanged && !otpFlow.mobileNumber.verified);
+    
     const availableDistricts = INDIA_LOCATIONS[formData.state] || [];
     const inputClass = "w-full bg-[#0B1120] text-white p-3 sm:p-3.5 rounded-xl border border-gray-700 text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all duration-300 disabled:opacity-60 disabled:bg-gray-800/30 disabled:cursor-not-allowed";
 
@@ -413,10 +389,21 @@ function ProfileForm({ initialUser, updateUser }) {
                                                 <input name="mobileNumber" type="text" maxLength="10" disabled={!isEditing} value={formData.mobileNumber} onChange={handleMobileChange} className={`${inputClass} pl-10 sm:pl-12 ${errors.mobileNumber ? 'border-red-500' : ''}`} />
                                             </div>
                                             
+                                            {/* Show verification buttons ONLY if the number is different from the original */}
                                             {isEditing && isMobileChanged && !otpFlow.mobileNumber.verified && (
-                                                <button type="button" disabled={formData.mobileNumber.length !== 10} onClick={handleSendOtp} className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold transition-colors shrink-0 w-24 sm:w-32">
-                                                    {otpFlow.mobileNumber.sent ? 'Resend OTP' : 'Send OTP'}
-                                                </button>
+                                                !otpFlow.mobileNumber.checked ? (
+                                                    <button type="button" disabled={formData.mobileNumber.length !== 10 || otpFlow.mobileNumber.checking} onClick={handleCheckExists} className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 text-white px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold transition-colors shrink-0 w-24 sm:w-32">
+                                                        {otpFlow.mobileNumber.checking ? 'Checking...' : 'Check'}
+                                                    </button>
+                                                ) : otpFlow.mobileNumber.isAvailable ? (
+                                                    <button type="button" onClick={handleSendOtp} className="bg-blue-600 hover:bg-blue-500 text-white px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold transition-colors shrink-0 w-24 sm:w-32">
+                                                        {otpFlow.mobileNumber.sent ? 'Resend OTP' : 'Send OTP'}
+                                                    </button>
+                                                ) : (
+                                                    <button type="button" disabled className="bg-red-500/20 text-red-400 px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold shrink-0 w-24 sm:w-32 cursor-not-allowed">
+                                                        Exists
+                                                    </button>
+                                                )
                                             )}
                                             {isEditing && isMobileChanged && otpFlow.mobileNumber.verified && (
                                                 <div className="bg-green-500/20 text-green-400 px-2 sm:px-4 rounded-xl flex items-center justify-center shrink-0 w-24 sm:w-32 text-[10px] sm:text-xs font-bold border border-green-500/30">
@@ -424,18 +411,19 @@ function ProfileForm({ initialUser, updateUser }) {
                                                 </div>
                                             )}
                                         </div>
+                                        {/* Display specific error underneath the mobile input */}
                                         {errors.mobileNumber && <p className="text-red-400 text-[10px] uppercase font-bold ml-1">{errors.mobileNumber}</p>}
                                     </div>
                                     
                                     <div className={`overflow-hidden transition-all duration-300 ${isEditing && isMobileChanged && otpFlow.mobileNumber.sent && !otpFlow.mobileNumber.verified ? 'max-h-20 mt-2 sm:mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="flex gap-2 sm:gap-3">
-                                            <input placeholder="6-digit OTP" maxLength="6" value={otpFlow.mobileNumber.code} onChange={(e) => handleOtpChange(e.target.value.replace(/\D/g, ''))} className={`${inputClass} text-center tracking-widest`} />
+                                            <input placeholder="6-digit OTP" maxLength="6" value={otpFlow.mobileNumber.code} onChange={(e) => setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, code: e.target.value.replace(/\D/g, '') } }))} className={`${inputClass} text-center tracking-widest`} />
                                             <button type="button" onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 text-white px-4 sm:px-6 rounded-xl text-sm font-bold transition shrink-0">Verify</button>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Email Address (No OTP verification attached) */}
+                                {/* Email Address */}
                                 <div>
                                     <label className=" text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1 sm:mb-1.5 ml-1 flex justify-between">
                                         <span>Email Address <span className="text-gray-600 normal-case ml-1">(Optional)</span></span>
@@ -454,22 +442,8 @@ function ProfileForm({ initialUser, updateUser }) {
                                 <span className="text-red-500 text-xl">📍</span> Delivery Address
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                <CustomSelect 
-                                    name="state"
-                                    value={formData.state}
-                                    options={Object.keys(INDIA_LOCATIONS)}
-                                    placeholder="Select State"
-                                    onChange={handleChange}
-                                    disabled={!isEditing}
-                                />
-                                <CustomSelect 
-                                    name="district"
-                                    value={formData.district}
-                                    options={availableDistricts}
-                                    placeholder="Select District"
-                                    onChange={handleChange}
-                                    disabled={!isEditing || !formData.state}
-                                />
+                                <CustomSelect name="state" value={formData.state} options={Object.keys(INDIA_LOCATIONS)} placeholder="Select State" onChange={handleChange} disabled={!isEditing} />
+                                <CustomSelect name="district" value={formData.district} options={availableDistricts} placeholder="Select District" onChange={handleChange} disabled={!isEditing || !formData.state} />
                             </div>
                             <input type="text" name="village" disabled={!isEditing} value={formData.village} onChange={handleChange} placeholder="Village / City / Street Name" className={inputClass} />
                         </div>
@@ -489,17 +463,7 @@ function ProfileForm({ initialUser, updateUser }) {
                                         disabled={isSaveDisabled} 
                                         className={`w-full sm:w-2/3 py-3.5 sm:py-4 rounded-xl font-bold text-sm sm:text-base text-white transition-all duration-300 shadow-lg flex items-center justify-center gap-2 ${isSaveDisabled ? 'bg-gray-700 cursor-not-allowed text-gray-400' : 'bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-green-500/25 transform hover:-translate-y-1'}`}
                                     >
-                                        {isSubmitting ? (
-                                            <>
-                                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                </svg>
-                                                Saving...
-                                            </>
-                                        ) : (
-                                            isSaveDisabled ? 'Fill required fields to Save' : 'Save Changes'
-                                        )}
+                                        {isSubmitting ? 'Saving...' : isSaveDisabled ? 'Fill required fields to Save' : 'Save Changes'}
                                     </button>
                                 </>
                             )}
@@ -545,38 +509,16 @@ function ProfileForm({ initialUser, updateUser }) {
                                     <div>
                                         <label className="block text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1">Current Password</label>
                                         <div className="relative">
-                                            <input 
-                                                type={showOldPass ? "text" : "password"} 
-                                                name="oldPassword" 
-                                                value={passwordData.oldPassword} 
-                                                onChange={handlePasswordInputChange} 
-                                                disabled={isPasswordVerifying}
-                                                className={`${inputClass} pr-12`} 
-                                                placeholder="Enter current password"
-                                            />
-                                            <button 
-                                                type="button" 
-                                                onClick={() => setShowOldPass(!showOldPass)} 
-                                                disabled={isPasswordVerifying}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-                                            >
+                                            <input type={showOldPass ? "text" : "password"} name="oldPassword" value={passwordData.oldPassword} onChange={handlePasswordInputChange} disabled={isPasswordVerifying} className={`${inputClass} pr-12`} placeholder="Enter current password" />
+                                            <button type="button" onClick={() => setShowOldPass(!showOldPass)} disabled={isPasswordVerifying} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors disabled:opacity-50">
                                                 {showOldPass ? "👁️" : "🙈"}
                                             </button>
                                         </div>
                                     </div>
                                     <div className="flex gap-3 pt-3 sm:pt-4">
                                         <button onClick={closePasswordModal} disabled={isPasswordVerifying} className="w-1/3 py-3 rounded-xl font-bold text-sm sm:text-base text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 transition disabled:opacity-50">Cancel</button>
-                                        <button 
-                                            onClick={handleVerifyOldPassword} 
-                                            disabled={isPasswordVerifying || !passwordData.oldPassword}
-                                            className="w-2/3 py-3 rounded-xl font-bold text-sm sm:text-base text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20 transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                        >
-                                            {isPasswordVerifying ? (
-                                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                </svg>
-                                            ) : 'Verify'}
+                                        <button onClick={handleVerifyOldPassword} disabled={isPasswordVerifying || !passwordData.oldPassword} className="w-2/3 py-3 rounded-xl font-bold text-sm sm:text-base text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20 transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed">
+                                            {isPasswordVerifying ? 'Verifying...' : 'Verify'}
                                         </button>
                                     </div>
                                 </div>
@@ -589,21 +531,8 @@ function ProfileForm({ initialUser, updateUser }) {
                                     <div>
                                         <label className="block text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1">New Password</label>
                                         <div className="relative">
-                                            <input 
-                                                type={showNewPass ? "text" : "password"} 
-                                                name="newPassword" 
-                                                value={passwordData.newPassword} 
-                                                onChange={handlePasswordInputChange} 
-                                                disabled={isPasswordSaving}
-                                                className={`${inputClass} pr-12`} 
-                                                placeholder="Enter new password"
-                                            />
-                                            <button 
-                                                type="button" 
-                                                onClick={() => setShowNewPass(!showNewPass)} 
-                                                disabled={isPasswordSaving}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-                                            >
+                                            <input type={showNewPass ? "text" : "password"} name="newPassword" value={passwordData.newPassword} onChange={handlePasswordInputChange} disabled={isPasswordSaving} className={`${inputClass} pr-12`} placeholder="Enter new password" />
+                                            <button type="button" onClick={() => setShowNewPass(!showNewPass)} disabled={isPasswordSaving} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors disabled:opacity-50">
                                                 {showNewPass ? "👁️" : "🙈"}
                                             </button>
                                         </div>
@@ -611,38 +540,16 @@ function ProfileForm({ initialUser, updateUser }) {
                                     <div>
                                         <label className="block text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1.5 ml-1">Confirm New Password</label>
                                         <div className="relative">
-                                            <input 
-                                                type={showConfPass ? "text" : "password"} 
-                                                name="confirmPassword" 
-                                                value={passwordData.confirmPassword} 
-                                                onChange={handlePasswordInputChange} 
-                                                disabled={isPasswordSaving}
-                                                className={`${inputClass} pr-12`} 
-                                                placeholder="Confirm new password"
-                                            />
-                                            <button 
-                                                type="button" 
-                                                onClick={() => setShowConfPass(!showConfPass)} 
-                                                disabled={isPasswordSaving}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-                                            >
+                                            <input type={showConfPass ? "text" : "password"} name="confirmPassword" value={passwordData.confirmPassword} onChange={handlePasswordInputChange} disabled={isPasswordSaving} className={`${inputClass} pr-12`} placeholder="Confirm new password" />
+                                            <button type="button" onClick={() => setShowConfPass(!showConfPass)} disabled={isPasswordSaving} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors disabled:opacity-50">
                                                 {showConfPass ? "👁️" : "🙈"}
                                             </button>
                                         </div>
                                     </div>
                                     <div className="flex gap-3 pt-3 sm:pt-4">
                                         <button onClick={closePasswordModal} disabled={isPasswordSaving} className="w-1/3 py-3 rounded-xl font-bold text-sm sm:text-base text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 transition disabled:opacity-50">Cancel</button>
-                                        <button 
-                                            onClick={handleSaveNewPassword} 
-                                            disabled={isPasswordSaving || passwordData.newPassword.length < 6 || passwordData.newPassword !== passwordData.confirmPassword}
-                                            className="w-2/3 py-3 rounded-xl font-bold text-sm sm:text-base text-white bg-linear-to-r from-yellow-600 to-amber-600 hover:from-yellow-500 hover:to-amber-500 shadow-lg shadow-yellow-500/20 transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                        >
-                                            {isPasswordSaving ? (
-                                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                </svg>
-                                            ) : 'Save Password'}
+                                        <button onClick={handleSaveNewPassword} disabled={isPasswordSaving || passwordData.newPassword.length < 6 || passwordData.newPassword !== passwordData.confirmPassword} className="w-2/3 py-3 rounded-xl font-bold text-sm sm:text-base text-white bg-linear-to-r from-yellow-600 to-amber-600 hover:from-yellow-500 hover:to-amber-500 shadow-lg shadow-yellow-500/20 transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed">
+                                            {isPasswordSaving ? 'Saving...' : 'Save Password'}
                                         </button>
                                     </div>
                                 </div>
