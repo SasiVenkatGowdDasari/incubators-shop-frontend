@@ -7,6 +7,7 @@ import { INDIA_LOCATIONS } from '../utils/locations';
 
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
+// Helpers remain UNEXPORTED so Fast Refresh doesn't complain about non-components
 const getMediaUrl = (urlStr) => {
     if (!urlStr) return '';
     const firstUrl = urlStr.split(',')[0].trim();
@@ -15,7 +16,16 @@ const getMediaUrl = (urlStr) => {
     return `${BACKEND_URL}${cleanPath}`;
 };
 
-const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, tabIndex }) => {
+const parseAddress = (user) => {
+    if (user.state && user.district && user.village) {
+        return { state: user.state, district: user.district, village: user.village };
+    }
+    const parts = (user.address || '').split(',').map(s => s.trim());
+    return { village: parts[0] || '', district: parts[1] || '', state: parts[2] || '' };
+};
+
+// ADDED EXPORT: Satisfies Vite Fast Refresh
+export const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, tabIndex }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [dropDirection, setDropDirection] = useState('down'); 
     const ref = useRef(null);
@@ -80,15 +90,8 @@ const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, t
     );
 };
 
-const parseAddress = (user) => {
-    if (user.state && user.district && user.village) {
-        return { state: user.state, district: user.district, village: user.village };
-    }
-    const parts = (user.address || '').split(',').map(s => s.trim());
-    return { village: parts[0] || '', district: parts[1] || '', state: parts[2] || '' };
-};
-
-function ProfileForm({ initialUser, updateUser }) {
+// ADDED EXPORT: Satisfies Vite Fast Refresh & unused var errors
+export function ProfileForm({ initialUser, updateUser }) {
     const { showToast } = useContext(ToastContext); 
     const [isEditing, setIsEditing] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
@@ -417,7 +420,7 @@ function ProfileForm({ initialUser, updateUser }) {
                                     
                                     <div className={`overflow-hidden transition-all duration-300 ${isEditing && isMobileChanged && otpFlow.mobileNumber.sent && !otpFlow.mobileNumber.verified ? 'max-h-20 mt-2 sm:mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="flex gap-2 sm:gap-3">
-                                            <input placeholder="6-digit OTP" maxLength="6" value={otpFlow.mobileNumber.code} onChange={(e) => setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, code: e.target.value.replace(/\D/g, '') } }))} className={`${inputClass} text-center tracking-widest`} />
+                                            <input placeholder="4-digit OTP" maxLength="4" value={otpFlow.mobileNumber.code} onChange={(e) => setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, code: e.target.value.replace(/\D/g, '') } }))} className={`${inputClass} text-center tracking-widest`} />
                                             <button type="button" onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 text-white px-4 sm:px-6 rounded-xl text-sm font-bold transition shrink-0">Verify</button>
                                         </div>
                                     </div>
@@ -562,6 +565,7 @@ function ProfileForm({ initialUser, updateUser }) {
     );
 }
 
+// Default export remains the same
 export default function Profile() {
     const { user, login } = useContext(AuthContext);
     const navigate = useNavigate();

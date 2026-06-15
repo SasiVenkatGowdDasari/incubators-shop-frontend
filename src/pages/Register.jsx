@@ -104,7 +104,6 @@ export default function Register() {
             const digits = value.replace(/\D/g, '').slice(0, 10);
             setFormData(prev => ({ ...prev, [name]: digits }));
             
-            // Instantly clear the verified state and errors when typing
             setOtpFlow(prev => ({ ...prev, mobile: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } }));
             setError('');
             setMobileError('');
@@ -120,12 +119,10 @@ export default function Register() {
 
         try {
             await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
-            // 200 OK means it EXISTS. We block it!
             setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: false } }));
             setMobileError('This mobile number is already registered. Please login.');
         } catch (err) {
             if (err.response?.status === 404) {
-                // 404 Not Found means it's available. Proceed to Send OTP.
                 setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: true } }));
             } else {
                 setMobileError(`Failed to check mobile number. Please try again.`);
@@ -151,7 +148,6 @@ export default function Register() {
         try {
             const response = await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobile.code });
             
-            // STRICT CHECK: If backend returns true/false wrapped in a 200 OK
             if (response.data === false || response.data === "false") {
                 throw new Error("Invalid or Expired mobile verification code.");
             }
@@ -259,7 +255,8 @@ export default function Register() {
 
                         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${otpFlow.mobile.sent ? 'max-h-20 mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                             <div className="flex gap-3">
-                                <input type="text" placeholder="Enter 6-digit OTP" maxLength="6" className={`${inputClass} text-center tracking-widest font-bold`} value={otpFlow.mobile.code} onChange={(e) => setOtpFlow(p => ({...p, mobile: {...p.mobile, code: e.target.value.replace(/\D/g, '')}}))} />
+                                {/* CHANGED TO 4-DIGIT EXPECTATION */}
+                                <input type="text" placeholder="Enter 4-digit OTP" maxLength="4" className={`${inputClass} text-center tracking-widest font-bold`} value={otpFlow.mobile.code} onChange={(e) => setOtpFlow(p => ({...p, mobile: {...p.mobile, code: e.target.value.replace(/\D/g, '')}}))} />
                                 <button type="button" onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0">
                                     Verify
                                 </button>
