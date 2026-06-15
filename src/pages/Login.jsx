@@ -1,11 +1,11 @@
 import { useState, useContext, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { ToastContext } from '../context/ToastContext'; // <-- NEW IMPORT
+import { ToastContext } from '../context/ToastContext'; 
 import api from '../services/api';
 
 export default function Login() {
-    const { showToast } = useContext(ToastContext); // <-- HOOK EXTRACTED
+    const { showToast } = useContext(ToastContext); 
     const [mobileNumber, setMobileNumber] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +20,7 @@ export default function Login() {
     const [isForgotOpen, setIsForgotOpen] = useState(false);
     const [forgotStep, setForgotStep] = useState(1); // 1 = Check/OTP, 2 = New Password
     const [forgotMobile, setForgotMobile] = useState('');
-    const [isAccountFound, setIsAccountFound] = useState(false); // NEW: Track if account exists
+    const [isAccountFound, setIsAccountFound] = useState(false); 
     const [isChecking, setIsChecking] = useState(false);
     const [forgotOtp, setForgotOtp] = useState({ sent: false, verified: false, code: '' });
     const [forgotPass, setForgotPass] = useState({ password: '', confirmPassword: '' });
@@ -86,7 +86,7 @@ export default function Login() {
         }
     };
 
-    // NEW: Check if mobile number exists in DB
+    // CHECK MOBILE (Requires 200 OK for success)
     const handleCheckMobile = async () => {
         setForgotError('');
         if (forgotMobile.length !== 10) {
@@ -97,30 +97,51 @@ export default function Login() {
         try {
             // Call backend to verify if user exists
             await api.post('/auth/check-mobile', { mobileNumber: forgotMobile });
+            
+            // HTTP 200 OK: Account exists! Proceed to OTP flow.
             setIsAccountFound(true);
         } catch (err) {
-            setForgotError("No account present with this number. Please register.",err);
+            // HTTP 404: Account not found
+            setForgotError("No account present with this number. Please register.");
+            console.log(err)
             setIsAccountFound(false);
         } finally {
             setIsChecking(false);
         }
     };
 
-    const handleSendForgotOtp = () => {
+    // DISPATCH LIVE OTP
+    const handleSendForgotOtp = async () => {
         setForgotError('');
-        // --- ADVANCED UI ALERT ---
-        showToast(`OTP sent to ${forgotMobile}! (Use 123456 to verify)`, 'info');
-        setForgotOtp(prev => ({ ...prev, sent: true, code: '' }));
+        try {
+            showToast(`Sending secure OTP to +91 ${forgotMobile}...`, 'info');
+            await api.post('/auth/send-mobile-otp', { mobileNumber: forgotMobile });
+            showToast(`Live OTP dispatched to mobile! Valid for 10 minutes.`, 'success');
+            setForgotOtp(prev => ({ ...prev, sent: true, code: '' }));
+        } catch (err) {
+            setForgotError(err.response?.data || "Failed to dispatch OTP. Please try again.");
+        }
     };
 
-    const handleVerifyForgotOtp = () => {
+    // VERIFY LIVE OTP
+    const handleVerifyForgotOtp = async () => {
         setForgotError('');
-        if (forgotOtp.code === '123456') {
+        try {
+            const response = await api.post('/auth/verify-mobile-otp', { mobileNumber: forgotMobile, otp: forgotOtp.code });
+            
+            // Strict JSON boolean parsing
+            if (response.data === false || response.data === "false") {
+                throw new Error("Invalid or Expired mobile verification code.");
+            }
+            
             setForgotOtp(prev => ({ ...prev, verified: true, sent: false, code: '' }));
             setForgotError('');
-            setForgotStep(2); // Proceed to Set New Password
-        } else {
-            setForgotError("Invalid OTP. Please try again.");
+            setForgotStep(2); // Proceed to Set New Password Step
+            showToast(`Mobile number verified! Proceeding to password reset.`, 'success');
+        } catch (err) {
+            const errorMsg = err.response?.data || err.message || "Invalid or Expired mobile verification code.";
+            setForgotError(errorMsg);
+            showToast(errorMsg, 'error');
         }
     };
 
@@ -151,7 +172,7 @@ export default function Login() {
             
             setIsSubmitting(false);
             closeForgotModal();
-            // --- ADVANCED UI SUCCESS ---
+            
             showToast("Password reset successfully! Please login with your new password.", "success");
             setMobileNumber(forgotMobile); 
             setPassword('');
@@ -277,7 +298,7 @@ export default function Login() {
                                                     type="text" 
                                                     placeholder="9876543210" 
                                                     maxLength="10" 
-                                                    className={`${inputClass} pl-12 py-3`} 
+                                                    className={`${inputClass} pl-12 py-3 ${forgotError ? 'border-red-500 focus:border-red-500' : ''}`} 
                                                     value={forgotMobile} 
                                                     onChange={handleForgotMobileChange} 
                                                     disabled={forgotOtp.verified} 
@@ -296,21 +317,22 @@ export default function Login() {
                                         </div>
                                     </div>
 
-                                    {/* OTP Input Field */}
+                                    {/* 4-DIGIT OTP Input Field */}
                                     <div className={`overflow-hidden transition-all duration-300 ease-in-out ${forgotOtp.sent ? 'max-h-20 mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="flex gap-3">
                                             <input 
                                                 type="text" 
-                                                placeholder="Enter 6-digit OTP" 
-                                                maxLength="6" 
+                                                placeholder="4-digit OTP" 
+                                                maxLength="4" 
                                                 className={`${inputClass} py-3 text-center tracking-widest font-bold`} 
                                                 value={forgotOtp.code} 
                                                 onChange={(e) => setForgotOtp(p => ({...p, code: e.target.value.replace(/\D/g, '')}))} 
                                             />
                                             <button 
                                                 type="button" 
+                                                disabled={forgotOtp.code.length !== 4}
                                                 onClick={handleVerifyForgotOtp} 
-                                                className="bg-green-600 hover:bg-green-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0"
+                                                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0"
                                             >
                                                 Verify
                                             </button>
