@@ -19,12 +19,10 @@ const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, t
 
     const toggleDropdown = () => {
         if (disabled) return;
-        
         if (!isOpen && ref.current) {
             const rect = ref.current.getBoundingClientRect();
             const spaceBelow = window.innerHeight - rect.bottom;
             const spaceAbove = rect.top;
-            
             if (spaceBelow < 260 && spaceAbove > spaceBelow) {
                 setDropDirection('up');
             } else {
@@ -119,9 +117,11 @@ export default function Register() {
 
         try {
             await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
+            // HTTP 200 OK: Number already exists. Block registration.
             setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: false } }));
             setMobileError('This mobile number is already registered. Please login.');
         } catch (err) {
+            // HTTP 404 NOT FOUND: Number is free. Allow OTP.
             if (err.response?.status === 404) {
                 setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, checking: false, checked: true, isAvailable: true } }));
             } else {
@@ -139,23 +139,21 @@ export default function Register() {
             showToast(`Live OTP dispatched to mobile! Valid for 5 minutes.`, 'success');
             setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, sent: true, code: '' } }));
         } catch (err) {
-            showToast(err.response?.data || "Failed to route OTP to your cellular network.", "error");
+            showToast(err.response?.data || "Failed to dispatch OTP.", "error");
         }
     };
 
     const handleVerifyOtp = async () => {
         setMobileError('');
         try {
-            const response = await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobile.code });
-            
-            if (response.data === false || response.data === "false") {
-                throw new Error("Invalid or Expired mobile verification code.");
-            }
+            // If the Java backend returns HTTP 200, it drops into this next line smoothly.
+            await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobile.code });
             
             setOtpFlow(prev => ({ ...prev, mobile: { ...prev.mobile, verified: true, sent: false, code: '' } }));
             showToast(`Mobile Number verified successfully!`, 'success');
         } catch (err) {
-            const errorMsg = err.response?.data || err.message || "Invalid or Expired mobile verification code.";
+            // If the Java backend returns HTTP 400 Bad Request, Axios jumps straight here!
+            const errorMsg = err.response?.data || "Invalid or Expired mobile verification code.";
             setMobileError(errorMsg);
             showToast(errorMsg, 'error');
         }
@@ -246,18 +244,16 @@ export default function Register() {
                             )}
                         </div>
                         
-                        {/* SPECIFIC MOBILE ERROR DISPLAY */}
                         {mobileError && (
                             <p className="text-red-400 text-[10px] uppercase font-bold mt-2 ml-1 animate-fade-in-up">
                                 {mobileError}
                             </p>
                         )}
 
-                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${otpFlow.mobile.sent ? 'max-h-20 mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${otpFlow.mobile.sent && !otpFlow.mobile.verified ? 'max-h-20 mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                             <div className="flex gap-3">
-                                {/* CHANGED TO 4-DIGIT EXPECTATION */}
                                 <input type="text" placeholder="Enter 4-digit OTP" maxLength="4" className={`${inputClass} text-center tracking-widest font-bold`} value={otpFlow.mobile.code} onChange={(e) => setOtpFlow(p => ({...p, mobile: {...p.mobile, code: e.target.value.replace(/\D/g, '')}}))} />
-                                <button type="button" onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0">
+                                <button type="button" disabled={otpFlow.mobile.code.length !== 4} onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-6 rounded-xl font-bold transition-colors shrink-0">
                                     Verify
                                 </button>
                             </div>

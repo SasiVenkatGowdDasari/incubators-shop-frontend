@@ -7,7 +7,6 @@ import { INDIA_LOCATIONS } from '../utils/locations';
 
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
-// Helpers remain UNEXPORTED so Fast Refresh doesn't complain about non-components
 const getMediaUrl = (urlStr) => {
     if (!urlStr) return '';
     const firstUrl = urlStr.split(',')[0].trim();
@@ -16,15 +15,6 @@ const getMediaUrl = (urlStr) => {
     return `${BACKEND_URL}${cleanPath}`;
 };
 
-const parseAddress = (user) => {
-    if (user.state && user.district && user.village) {
-        return { state: user.state, district: user.district, village: user.village };
-    }
-    const parts = (user.address || '').split(',').map(s => s.trim());
-    return { village: parts[0] || '', district: parts[1] || '', state: parts[2] || '' };
-};
-
-// ADDED EXPORT: Satisfies Vite Fast Refresh
 export const CustomSelect = ({ name, value, options, placeholder, onChange, disabled, tabIndex }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [dropDirection, setDropDirection] = useState('down'); 
@@ -90,7 +80,14 @@ export const CustomSelect = ({ name, value, options, placeholder, onChange, disa
     );
 };
 
-// ADDED EXPORT: Satisfies Vite Fast Refresh & unused var errors
+const parseAddress = (user) => {
+    if (user.state && user.district && user.village) {
+        return { state: user.state, district: user.district, village: user.village };
+    }
+    const parts = (user.address || '').split(',').map(s => s.trim());
+    return { village: parts[0] || '', district: parts[1] || '', state: parts[2] || '' };
+};
+
 export function ProfileForm({ initialUser, updateUser }) {
     const { showToast } = useContext(ToastContext); 
     const [isEditing, setIsEditing] = useState(false);
@@ -149,7 +146,6 @@ export function ProfileForm({ initialUser, updateUser }) {
         const rawDigits = e.target.value.replace(/\D/g, '').slice(0, 10);
         setFormData(prev => ({ ...prev, mobileNumber: rawDigits }));
 
-        // Instantly reset the verify flow and clear errors if they change the number back
         setOtpFlow({ mobileNumber: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } });
 
         if (rawDigits.length > 0 && rawDigits.length !== 10) {
@@ -172,12 +168,12 @@ export function ProfileForm({ initialUser, updateUser }) {
         setErrors(prev => ({ ...prev, mobileNumber: '' }));
         try {
             await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
-            // 200 OK means it EXISTS. We block it!
+            // HTTP 200 OK: Exists in DB. Block them.
             setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: false, checked: true, isAvailable: false } }));
             setErrors(prev => ({ ...prev, mobileNumber: 'Mobile number already exists, check with another one.' }));
         } catch (err) {
+            // HTTP 404 NOT FOUND: Free to use.
             if (err.response?.status === 404) {
-                // 404 Not Found means it's available. Proceed to Send OTP.
                 setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: false, checked: true, isAvailable: true } }));
                 setErrors(prev => ({ ...prev, mobileNumber: '' }));
             } else {
@@ -189,7 +185,7 @@ export function ProfileForm({ initialUser, updateUser }) {
 
     const handleSendOtp = async () => {
         try {
-            showToast(`Sending secure OTP to +91 ${formData.mobileNumber}...`, 'info');
+            showToast(`Sending live OTP to +91 ${formData.mobileNumber}...`, 'info');
             await api.post('/auth/send-mobile-otp', { mobileNumber: formData.mobileNumber });
             showToast(`OTP sent to your mobile phone! Valid for 5 minutes.`, 'success');
             setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, sent: true } }));
@@ -200,18 +196,15 @@ export function ProfileForm({ initialUser, updateUser }) {
 
     const handleVerifyOtp = async () => {
         try {
-            const response = await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobileNumber.code });
-            
-            // STRICT CHECK: If backend returns true/false wrapped in a 200 OK
-            if (response.data === false || response.data === "false") {
-                throw new Error("Invalid or expired mobile OTP.");
-            }
+            // If the Java backend returns HTTP 200, it drops into this next line smoothly.
+            await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobileNumber.code });
             
             setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, verified: true, sent: false, code: '' } }));
             setErrors(prev => ({ ...prev, mobileNumber: '' }));
             showToast(`Mobile number verified successfully!`, 'success');
         } catch (err) {
-            const errorMsg = err.response?.data || err.message || "Invalid or expired mobile OTP.";
+            // If the Java backend returns HTTP 400 Bad Request, Axios jumps straight here!
+            const errorMsg = err.response?.data || "Invalid or expired mobile OTP.";
             setErrors(prev => ({ ...prev, mobileNumber: errorMsg }));
             showToast(errorMsg, "error");
         }
@@ -392,7 +385,6 @@ export function ProfileForm({ initialUser, updateUser }) {
                                                 <input name="mobileNumber" type="text" maxLength="10" disabled={!isEditing} value={formData.mobileNumber} onChange={handleMobileChange} className={`${inputClass} pl-10 sm:pl-12 ${errors.mobileNumber ? 'border-red-500' : ''}`} />
                                             </div>
                                             
-                                            {/* Show verification buttons ONLY if the number is different from the original */}
                                             {isEditing && isMobileChanged && !otpFlow.mobileNumber.verified && (
                                                 !otpFlow.mobileNumber.checked ? (
                                                     <button type="button" disabled={formData.mobileNumber.length !== 10 || otpFlow.mobileNumber.checking} onClick={handleCheckExists} className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 text-white px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-bold transition-colors shrink-0 w-24 sm:w-32">
@@ -414,14 +406,13 @@ export function ProfileForm({ initialUser, updateUser }) {
                                                 </div>
                                             )}
                                         </div>
-                                        {/* Display specific error underneath the mobile input */}
                                         {errors.mobileNumber && <p className="text-red-400 text-[10px] uppercase font-bold ml-1">{errors.mobileNumber}</p>}
                                     </div>
                                     
                                     <div className={`overflow-hidden transition-all duration-300 ${isEditing && isMobileChanged && otpFlow.mobileNumber.sent && !otpFlow.mobileNumber.verified ? 'max-h-20 mt-2 sm:mt-3 opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="flex gap-2 sm:gap-3">
-                                            <input placeholder="4-digit OTP" maxLength="4" value={otpFlow.mobileNumber.code} onChange={(e) => setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, code: e.target.value.replace(/\D/g, '') } }))} className={`${inputClass} text-center tracking-widest`} />
-                                            <button type="button" onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 text-white px-4 sm:px-6 rounded-xl text-sm font-bold transition shrink-0">Verify</button>
+                                            <input placeholder="4-digit OTP" maxLength="4" value={otpFlow.mobileNumber.code} onChange={(e) => setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, code: e.target.value.replace(/\D/g, '') } }))} className={`${inputClass} text-center tracking-widest font-bold`} />
+                                            <button type="button" disabled={otpFlow.mobileNumber.code.length !== 4} onClick={handleVerifyOtp} className="bg-green-600 hover:bg-green-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 sm:px-6 rounded-xl text-sm font-bold transition shrink-0">Verify</button>
                                         </div>
                                     </div>
                                 </div>
@@ -565,7 +556,6 @@ export function ProfileForm({ initialUser, updateUser }) {
     );
 }
 
-// Default export remains the same
 export default function Profile() {
     const { user, login } = useContext(AuthContext);
     const navigate = useNavigate();
