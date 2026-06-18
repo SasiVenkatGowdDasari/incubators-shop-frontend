@@ -49,7 +49,7 @@ const FadeInScroll = ({ children, delay = 0, direction = 'up' }) => {
 };
 
 export default function Cart() {
-    const { cart, updateQuantity, removeFromCart, clearCart } = useContext(CartContext);
+    const { cart, isCartLoading, updateQuantity, removeFromCart, clearCart } = useContext(CartContext);
     const { user } = useContext(AuthContext);
     const { showToast } = useContext(ToastContext);
     const navigate = useNavigate();
@@ -149,7 +149,8 @@ export default function Cart() {
 
             await api.post('/orders', orderPayload);
 
-            clearCart();
+            // 🚨 THE FIX: Await the database clearCart call!
+            await clearCart();
             setCheckoutState('success');
 
         } catch (err) {
@@ -159,7 +160,6 @@ export default function Cart() {
         }
     };
 
-    // Improved Helper to fix Double URL bugs
     const getImageUrl = (urlStr) => {
         if (!urlStr) return null;
         const firstUrl = urlStr.split(',')[0].trim();
@@ -167,6 +167,15 @@ export default function Cart() {
         const cleanPath = firstUrl.startsWith('/') ? firstUrl : `/uploads/${firstUrl}`.replace('/uploads/uploads/', '/uploads/');
         return `${BACKEND_URL}${cleanPath}`;
     };
+
+    // Show a small loader if the DB is still syncing
+    if (isCartLoading && cart.length === 0) {
+        return (
+            <div className="min-h-screen bg-[#0B1120] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     if (cart.length === 0 && checkoutState === 'idle') {
         return (
@@ -251,7 +260,6 @@ export default function Cart() {
                                                     )}
                                                 </div>
                                                 
-                                                {/* NEW ID & CAPACITY ROW */}
                                                 <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider">
                                                     <span className="font-mono bg-gray-800/50 px-2 py-0.5 rounded text-gray-300 border border-gray-700/50 shadow-inner">ID: #{item.id}</span>
                                                     <span className="text-gray-600">•</span>
@@ -348,7 +356,6 @@ export default function Cart() {
                                                 {removingId === item.id ? 'Removing' : 'Remove'}
                                             </button>
                                         </div>
-
                                     </div>
                                 </FadeInScroll>
                             );
@@ -441,7 +448,6 @@ export default function Cart() {
                             Our admin, <strong className="text-white">{adminContact.name}</strong>, will contact you shortly to confirm delivery.
                         </p>
                         
-                        {/* ADMIN CONTACT BOX */}
                         <div className="bg-[#0B1120] p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-800 w-full mb-6 sm:mb-8 relative z-10 shadow-inner">
                             <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1.5 sm:mb-2">Need help immediately?</p>
                             <div className="flex items-center justify-center gap-2 sm:gap-3">
