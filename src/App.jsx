@@ -36,7 +36,7 @@ export default function App() {
             <Router>
               <ScrollToTop/>
               <Navbar/>
-              <div className="min-h-screen bg-gray-[#0B1120] pt-15">
+              <div className="min-h-screen bg-gray-[#0B1120] pt-10">
                 <Routes>
                   
                   {/* =========================================
