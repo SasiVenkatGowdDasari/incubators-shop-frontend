@@ -30,7 +30,7 @@ export default function ManageInventory() {
     const [existingImages, setExistingImages] = useState([]);
     const [existingVideos, setExistingVideos] = useState([]);
     
-    // React state to hold our cumulative list of new files
+    // React state to securely hold the cumulative list of new files
     const [newImages, setNewImages] = useState([]);
     const [newVideos, setNewVideos] = useState([]);
 
@@ -61,10 +61,14 @@ export default function ManageInventory() {
             id: product.id, title: product.title || '', description: product.description || '', actualPrice: product.actualPrice || '', currentPrice: product.currentPrice || '', stockQuantity: product.stockQuantity || '', material: product.material || '', type: product.type || 'Fully Automatic', capacity: product.capacity || '', warranty: product.warranty || '', shippingOptions: product.shippingOptions || '', active: product.active !== undefined ? product.active : true
         });
         
-        // Safely split and filter out empty strings to prevent joining errors
+        // Safely parse existing URLs
         setExistingImages(product.imageUrl ? product.imageUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         setExistingVideos(product.videoUrl ? product.videoUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
-        setNewImages([]); setNewVideos([]);
+        
+        // Ensure new file arrays are empty when opening an existing product
+        setNewImages([]); 
+        setNewVideos([]);
+        
         setIsEditMode(true);
         setIsModalOpen(true);
     }, []);
@@ -90,7 +94,9 @@ export default function ManageInventory() {
             // Append newly selected files to the existing array instead of replacing
             setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
         }
-        e.target.value = null; // Clear the native input to allow selecting the same file again
+        // Forcefully clear the native input to allow selecting the same file again
+        // and prevent the native "1 file chosen" text from causing confusion
+        e.target.value = null; 
     };
 
     const handleNewVideosChange = (e) => {
@@ -149,11 +155,11 @@ export default function ManageInventory() {
                 }
             }
 
-            // COMBINE OLD AND NEW SAFELY
+            // 3. COMBINE OLD AND NEW SAFELY
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // 3. SEND URLs TO BACKEND
+            // 4. SEND TEXT URLs TO BACKEND
             const data = new FormData();
             Object.keys(formData).forEach(key => {
                 if (key !== 'id') data.append(key, formData[key]);
@@ -161,6 +167,7 @@ export default function ManageInventory() {
             data.append('imageUrls', finalImageUrls);
             data.append('videoUrls', finalVideoUrls);
 
+            // Execute the save (Works for both Edit Mode and Add Mode)
             if (isEditMode) {
                 await api.put(`/products/${formData.id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
                 showToast('Product Updated Successfully!', 'success');
@@ -473,16 +480,17 @@ export default function ManageInventory() {
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                                                 Select Images
                                             </span>
+                                            {/* Hide native input completely */}
                                             <input type="file" multiple accept="image/*" onChange={handleNewImagesChange} className="hidden" />
                                         </label>
 
-                                        {/* List showing names of pending image uploads */}
+                                        {/* Beautiful UI Grid showing thumbnail previews of pending image uploads */}
                                         {newImages.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-2">
+                                            <div className="flex flex-wrap gap-2 pt-2 border-t border-blue-500/20">
                                                 {newImages.map((file, idx) => (
-                                                    <div key={idx} className="flex justify-between items-center bg-blue-500/10 border border-blue-500/30 px-3 py-2.5 rounded-lg shadow-inner">
-                                                        <span className="text-xs text-gray-300 font-medium truncate pr-4">🖼️ {file.name}</span>
-                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewImage(idx)} className="text-red-400 hover:text-red-300 text-lg leading-none font-bold shrink-0">&times;</button>
+                                                    <div key={idx} className="relative w-16 h-16 shrink-0 border border-blue-500/50 rounded-lg overflow-hidden bg-black group shadow-md">
+                                                        <img src={URL.createObjectURL(file)} className="w-full h-full object-cover opacity-80" alt="New" />
+                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewImage(idx)} className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition">&times;</button>
                                                     </div>
                                                 ))}
                                             </div>
@@ -493,21 +501,23 @@ export default function ManageInventory() {
                                     <div>
                                         <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-3">Upload New Videos</label>
                                         
+                                        {/* Hidden Input wrapped in a custom button label */}
                                         <label className="flex items-center justify-center w-full bg-[#0B1120] border-2 border-dashed border-gray-700 hover:border-purple-500 text-gray-400 hover:text-white py-3.5 rounded-xl cursor-pointer transition-all mb-3 group">
                                             <span className="flex items-center gap-2 font-bold text-sm">
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                                 Select Videos
                                             </span>
+                                            {/* Hide native input completely */}
                                             <input type="file" multiple accept="video/*" onChange={handleNewVideosChange} className="hidden" />
                                         </label>
 
-                                        {/* List showing names of pending video uploads */}
+                                        {/* Beautiful UI Grid showing thumbnail previews of pending video uploads */}
                                         {newVideos.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-2">
+                                            <div className="flex flex-wrap gap-2 pt-2 border-t border-purple-500/20">
                                                 {newVideos.map((file, idx) => (
-                                                    <div key={idx} className="flex justify-between items-center bg-purple-500/10 border border-purple-500/30 px-3 py-2.5 rounded-lg shadow-inner">
-                                                        <span className="text-xs text-gray-300 font-medium truncate pr-4">🎥 {file.name}</span>
-                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewVideo(idx)} className="text-red-400 hover:text-red-300 text-lg leading-none font-bold shrink-0">&times;</button>
+                                                    <div key={idx} className="relative w-24 h-16 shrink-0 border border-purple-500/50 rounded-lg overflow-hidden bg-black group shadow-md">
+                                                        <video src={URL.createObjectURL(file)} className="w-full h-full object-cover opacity-80" />
+                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewVideo(idx)} className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition">&times;</button>
                                                     </div>
                                                 ))}
                                             </div>
