@@ -27,10 +27,11 @@ export default function ManageInventory() {
         id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: '', capacity: '', warranty: '', shippingOptions: '', active: true
     });
 
+    // Holds URLs already stored in the DB
     const [existingImages, setExistingImages] = useState([]);
     const [existingVideos, setExistingVideos] = useState([]);
     
-    // React state to hold the cumulative list of newly selected files
+    // Holds actual File objects selected from the computer
     const [newImages, setNewImages] = useState([]);
     const [newVideos, setNewVideos] = useState([]);
 
@@ -128,7 +129,7 @@ export default function ManageInventory() {
             let newImgUrls = [];
             let newVidUrls = [];
 
-            // 1. UPLOAD NEW IMAGES TO CLOUDINARY (Cloudinary REQUIRES FormData)
+            // 1. UPLOAD NEW IMAGES TO CLOUDINARY
             if (newImages.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
@@ -164,13 +165,9 @@ export default function ManageInventory() {
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // =======================================================================
-            // 🚨 CRITICAL FIX: SEND TO SPRING BOOT USING URLSearchParams (NOT FormData)
-            // =======================================================================
+            // 4. SEND TEXT URLs TO BACKEND (Fixes the 400 Bad Request Bug!)
             const payload = new URLSearchParams();
-            
             Object.keys(formData).forEach(key => {
-                // Ensure we don't append null or undefined values
                 if (key !== 'id' && formData[key] !== null && formData[key] !== undefined) {
                     payload.append(key, formData[key]);
                 }
@@ -178,7 +175,7 @@ export default function ManageInventory() {
             payload.append('imageUrls', finalImageUrls);
             payload.append('videoUrls', finalVideoUrls);
 
-            // Execute the request, explicitly telling Axios we are sending URL Encoded data
+            // Explicitly set content type to prevent Axios/Tomcat conflict
             const config = {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
@@ -186,10 +183,10 @@ export default function ManageInventory() {
             };
 
             if (isEditMode) {
-                await api.put(`/products/${formData.id}`, payload.toString(), config);
+                await api.put(`/products/${formData.id}`, payload, config);
                 showToast('Product Updated Successfully!', 'success');
             } else {
-                await api.post('/products', payload.toString(), config);
+                await api.post('/products', payload, config);
                 showToast('Product Added Successfully!', 'success');
             }
             
