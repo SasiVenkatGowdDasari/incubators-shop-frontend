@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import axios from 'axios'; // <-- ADDED AXIOS FOR CLOUDINARY
+import axios from 'axios';
 import api from '../services/api';
 import { ToastContext } from '../context/ToastContext';
 
@@ -29,6 +29,8 @@ export default function ManageInventory() {
 
     const [existingImages, setExistingImages] = useState([]);
     const [existingVideos, setExistingVideos] = useState([]);
+    
+    // 🚨 NEW: These are now properly maintained arrays
     const [newImages, setNewImages] = useState([]);
     const [newVideos, setNewVideos] = useState([]);
 
@@ -78,6 +80,34 @@ export default function ManageInventory() {
         }
     }, [products, searchParams, setSearchParams, openEditModal]);
 
+    // ==========================================
+    // 🚨 NEW: FILE APPENDING HANDLERS
+    // ==========================================
+    const handleNewImagesChange = (e) => {
+        if (e.target.files) {
+            // Append newly selected files to the existing array instead of replacing it
+            setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
+        }
+        // Reset the input so clicking it again works even if selecting the same file
+        e.target.value = null; 
+    };
+
+    const handleNewVideosChange = (e) => {
+        if (e.target.files) {
+            setNewVideos(prev => [...prev, ...Array.from(e.target.files)]);
+        }
+        e.target.value = null;
+    };
+
+    const removeNewImage = (indexToRemove) => {
+        setNewImages(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
+    const removeNewVideo = (indexToRemove) => {
+        setNewVideos(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+    // ==========================================
+
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -85,7 +115,7 @@ export default function ManageInventory() {
         try {
             // 1. UPLOAD ALL NEW IMAGES DIRECTLY TO CLOUDINARY
             let newImgUrls = [];
-            for (const file of Array.from(newImages)) {
+            for (const file of newImages) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
                 const uploadData = new FormData();
@@ -99,7 +129,7 @@ export default function ManageInventory() {
 
             // 2. UPLOAD ALL NEW VIDEOS DIRECTLY TO CLOUDINARY
             let newVidUrls = [];
-            for (const file of Array.from(newVideos)) {
+            for (const file of newVideos) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
                 const uploadData = new FormData();
@@ -423,11 +453,37 @@ export default function ManageInventory() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 bg-blue-900/10 p-4 md:p-5 rounded-xl border border-blue-900/30">
                                     <div>
                                         <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">Upload New Images</label>
-                                        <input type="file" multiple accept="image/*" onChange={(e) => setNewImages(e.target.files)} className="w-full bg-black/50 text-gray-300 border border-gray-700 rounded-lg p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" />
+                                        {/* 🚨 UPDATED onChange handler */}
+                                        <input type="file" multiple accept="image/*" onChange={handleNewImagesChange} className="w-full bg-black/50 text-gray-300 border border-gray-700 rounded-lg p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer mb-3" />
+                                        
+                                        {/* 🚨 NEW: Preview UI for pending images */}
+                                        {newImages.length > 0 && (
+                                            <div className="flex flex-wrap gap-2 pt-2 border-t border-blue-500/20">
+                                                {newImages.map((file, idx) => (
+                                                    <div key={idx} className="relative w-16 h-16 shrink-0 border border-blue-500/50 rounded-lg overflow-hidden bg-black group shadow-md">
+                                                        <img src={URL.createObjectURL(file)} className="w-full h-full object-cover opacity-80" alt="New" />
+                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewImage(idx)} className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition">&times;</button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-2">Upload New Videos</label>
-                                        <input type="file" multiple accept="video/*" onChange={(e) => setNewVideos(e.target.files)} className="w-full bg-black/50 text-gray-300 border border-gray-700 rounded-lg p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 cursor-pointer" />
+                                        {/* 🚨 UPDATED onChange handler */}
+                                        <input type="file" multiple accept="video/*" onChange={handleNewVideosChange} className="w-full bg-black/50 text-gray-300 border border-gray-700 rounded-lg p-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 cursor-pointer mb-3" />
+                                        
+                                        {/* 🚨 NEW: Preview UI for pending videos */}
+                                        {newVideos.length > 0 && (
+                                            <div className="flex flex-wrap gap-2 pt-2 border-t border-purple-500/20">
+                                                {newVideos.map((file, idx) => (
+                                                    <div key={idx} className="relative w-24 h-16 shrink-0 border border-purple-500/50 rounded-lg overflow-hidden bg-black group shadow-md">
+                                                        <video src={URL.createObjectURL(file)} className="w-full h-full object-cover opacity-80" />
+                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewVideo(idx)} className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition">&times;</button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
