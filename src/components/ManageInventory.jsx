@@ -40,7 +40,7 @@ export default function ManageInventory() {
                 setProducts(sortedProducts);
                 setLoading(false);
             } catch (err) {
-                console.error("Failed to load products:", err);
+                console.error(err);
                 setLoading(false);
             }
         };
@@ -84,30 +84,45 @@ export default function ManageInventory() {
         }
     }, [products, searchParams, setSearchParams, openEditModal]);
 
+    // ==========================================
+    // DYNAMIC FILE HANDLERS (FIXED ASYNC BUG)
+    // ==========================================
     const handleNewImagesChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
+            // Extract immediately to avoid React losing the data when input resets
+            const selectedFiles = Array.from(e.target.files);
+            
             if (isEditMode) {
-                setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
+                setNewImages(prev => [...prev, ...selectedFiles]);
             } else {
-                setNewImages(Array.from(e.target.files));
+                setNewImages(selectedFiles);
             }
         }
-        e.target.value = ''; 
+        e.target.value = ''; // Safe to reset now
     };
 
     const handleNewVideosChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
+            // Extract immediately
+            const selectedFiles = Array.from(e.target.files);
+            
             if (isEditMode) {
-                setNewVideos(prev => [...prev, ...Array.from(e.target.files)]);
+                setNewVideos(prev => [...prev, ...selectedFiles]);
             } else {
-                setNewVideos(Array.from(e.target.files));
+                setNewVideos(selectedFiles);
             }
         }
-        e.target.value = '';
+        e.target.value = ''; // Safe to reset now
     };
 
-    const removeNewImage = (indexToRemove) => setNewImages(prev => prev.filter((_, index) => index !== indexToRemove));
-    const removeNewVideo = (indexToRemove) => setNewVideos(prev => prev.filter((_, index) => index !== indexToRemove));
+    const removeNewImage = (indexToRemove) => {
+        setNewImages(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
+    const removeNewVideo = (indexToRemove) => {
+        setNewVideos(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+    // ==========================================
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
@@ -117,18 +132,12 @@ export default function ManageInventory() {
             let newImgUrls = [];
             let newVidUrls = [];
 
-            // 1. Fetch Signature
             let signature, timestamp, apiKey, cloudName;
             if (newImages.length > 0 || newVideos.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 ({ signature, timestamp, apiKey, cloudName } = sigRes.data);
-                
-                if (!signature || !apiKey || !cloudName) {
-                    throw new Error("Invalid Cloudinary signature payload from backend.");
-                }
             }
 
-            // 2. Upload Images
             if (newImages.length > 0) {
                 for (const file of newImages) {
                     const uploadData = new FormData();
@@ -136,13 +145,11 @@ export default function ManageInventory() {
                     uploadData.append("api_key", apiKey);
                     uploadData.append("timestamp", timestamp);
                     uploadData.append("signature", signature);
-                    
-                    const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
-                    newImgUrls.push(res.data.secure_url);
+                    const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
+                    newImgUrls.push(cloudinaryRes.data.secure_url);
                 }
             }
 
-            // 3. Upload Videos
             if (newVideos.length > 0) {
                 for (const file of newVideos) {
                     const uploadData = new FormData();
@@ -150,17 +157,14 @@ export default function ManageInventory() {
                     uploadData.append("api_key", apiKey);
                     uploadData.append("timestamp", timestamp);
                     uploadData.append("signature", signature);
-                    
-                    const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, uploadData);
-                    newVidUrls.push(res.data.secure_url);
+                    const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, uploadData);
+                    newVidUrls.push(cloudinaryRes.data.secure_url);
                 }
             }
 
-            // 4. Combine URLs
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // 5. Construct Payload Safely
             const payload = new URLSearchParams();
             Object.keys(formData).forEach(key => {
                 if (key !== 'id' && formData[key] !== null && formData[key] !== undefined) {
@@ -170,24 +174,25 @@ export default function ManageInventory() {
             payload.append('imageUrls', finalImageUrls);
             payload.append('videoUrls', finalVideoUrls);
 
-            // Pass the URLSearchParams object directly. Axios will handle the application/x-www-form-urlencoded formatting perfectly.
             const config = {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
             };
 
             if (isEditMode) {
-                await api.put(`/products/${formData.id}`, payload, config);
+                await api.put(`/products/${formData.id}`, payload.toString(), config);
                 showToast('Product Updated Successfully!', 'success');
             } else {
-                await api.post('/products', payload, config);
+                await api.post('/products', payload.toString(), config);
                 showToast('Product Added Successfully!', 'success');
             }
             
             setIsModalOpen(false);
             setRefreshKey(p => p + 1);
         } catch (err) {
-            console.error("Submission Error:", err);
-            showToast('Failed to save product/media. Please try again.', 'error');
+            console.error(err);
+            showToast('Failed to save product. Please check your network connection.', 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -212,7 +217,6 @@ export default function ManageInventory() {
                     </button>
                 </div>
 
-                {/* MOBILE VIEW */}
                 <div className="md:hidden flex flex-col gap-4">
                     {products.length === 0 ? (
                         <div className="px-6 py-12 text-center text-gray-500 bg-[#111827] rounded-xl">No products in inventory.</div>
@@ -282,7 +286,6 @@ export default function ManageInventory() {
                     )}
                 </div>
 
-                {/* DESKTOP VIEW */}
                 <div className="hidden md:block overflow-x-auto">
                     <table className="min-w-full text-left text-sm whitespace-nowrap">
                         <thead className="bg-gray-800/50 text-gray-400">
@@ -346,7 +349,6 @@ export default function ManageInventory() {
                 </div>
             </div>
 
-            {/* MODAL */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4 md:p-6 backdrop-blur-md">
                     <div className="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col relative custom-scrollbar">
@@ -443,7 +445,6 @@ export default function ManageInventory() {
                             <div className="md:col-span-2 border-t border-gray-800/80 pt-6 md:pt-8 mt-2 md:mt-4">
                                 <h3 className="text-white font-extrabold mb-4 md:mb-6 text-lg border-l-4 border-blue-500 pl-3">Media Management</h3>
 
-                                {/* EXISTING MEDIA ROW (Displays when Editing) */}
                                 {isEditMode && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
                                         {existingImages.length > 0 && (
@@ -476,10 +477,8 @@ export default function ManageInventory() {
                                     </div>
                                 )}
 
-                                {/* NEW MEDIA UPLOAD ROW */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 bg-blue-900/10 p-4 md:p-5 rounded-xl border border-blue-900/30">
                                     
-                                    {/* Image Upload Column */}
                                     <div>
                                         <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-3">Upload New Images</label>
                                         
@@ -509,7 +508,6 @@ export default function ManageInventory() {
                                         )}
                                     </div>
                                     
-                                    {/* Video Upload Column */}
                                     <div>
                                         <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-3">Upload New Videos</label>
                                         
