@@ -128,7 +128,7 @@ export default function ManageInventory() {
             let newImgUrls = [];
             let newVidUrls = [];
 
-            // 1. UPLOAD NEW IMAGES TO CLOUDINARY (Using FormData because Cloudinary expects it)
+            // 1. UPLOAD NEW IMAGES TO CLOUDINARY (Cloudinary REQUIRES FormData)
             if (newImages.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
@@ -164,12 +164,13 @@ export default function ManageInventory() {
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // ===================================================================
-            // 🚨 CRITICAL FIX: SEND TEXT URLs TO SPRING BOOT USING URLSearchParams
-            // This prevents the Tomcat 'PUT' error and avoids the 400 Bad Request!
-            // ===================================================================
+            // =======================================================================
+            // 🚨 CRITICAL FIX: SEND TO SPRING BOOT USING URLSearchParams (NOT FormData)
+            // =======================================================================
             const payload = new URLSearchParams();
+            
             Object.keys(formData).forEach(key => {
+                // Ensure we don't append null or undefined values
                 if (key !== 'id' && formData[key] !== null && formData[key] !== undefined) {
                     payload.append(key, formData[key]);
                 }
@@ -177,11 +178,18 @@ export default function ManageInventory() {
             payload.append('imageUrls', finalImageUrls);
             payload.append('videoUrls', finalVideoUrls);
 
+            // Execute the request, explicitly telling Axios we are sending URL Encoded data
+            const config = {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            };
+
             if (isEditMode) {
-                await api.put(`/products/${formData.id}`, payload);
+                await api.put(`/products/${formData.id}`, payload.toString(), config);
                 showToast('Product Updated Successfully!', 'success');
             } else {
-                await api.post('/products', payload);
+                await api.post('/products', payload.toString(), config);
                 showToast('Product Added Successfully!', 'success');
             }
             
