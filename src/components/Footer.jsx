@@ -55,7 +55,7 @@ export default function Footer() {
                                     <span className="text-3xl">👨‍💻</span> Need a Custom Website?
                                 </h4>
                                 <p className="text-gray-400 text-sm md:text-base leading-relaxed max-w-xl">
-                                    Built with passion by <strong className="text-white">Sasi Venkat Gowd</strong>. I build premium, high-performance web solutions. Let's create something extraordinary.
+                                    Built with passion by <strong className="text-white">Sasi Venkat</strong>. I build premium, high-performance web solutions. Let's create something extraordinary.
                                 </p>
                             </div>
 

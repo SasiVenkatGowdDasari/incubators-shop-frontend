@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CartContext } from '../context/CartContext';
 import { AuthContext } from '../context/AuthContext';
@@ -19,14 +19,18 @@ export default function ProductCard({ product }) {
     const { user } = useContext(AuthContext);
     const navigate = useNavigate();
 
+    // 🚨 NEW: State to track the loading spinner
+    const [isAdding, setIsAdding] = useState(false);
+
     const imageUrl = getMediaUrl(product.imageUrl);
     const isAdmin = user?.role === 'ADMIN';
 
-    // FIX: Strictly check if 'user' exists before evaluating cart status
+    // Strictly check if 'user' exists before evaluating cart status
     const isInCart = user ? cart.some(item => item.id === product.id) : false;
     const isOutOfStock = product.stockQuantity <= 0;
 
-    const handleActionClick = (e) => {
+    // 🚨 UPDATED: Made this function async so we can wait for the database
+    const handleActionClick = async (e) => {
         e.preventDefault(); 
         e.stopPropagation(); // Prevents the outer <Link> from triggering
 
@@ -40,7 +44,14 @@ export default function ProductCard({ product }) {
         if (isInCart) {
             navigate('/cart');
         } else {
-            addToCart(product);
+            // Trigger the loading spinner
+            setIsAdding(true);
+            
+            // Wait for the backend database to successfully add the item
+            await addToCart(product);
+            
+            // Stop the spinner (the button will now say "✓ Go to Cart")
+            setIsAdding(false);
         }
     };
 
@@ -144,9 +155,9 @@ export default function ProductCard({ product }) {
                                 </button>
                                 <button 
                                     onClick={handleActionClick}
-                                    disabled={isOutOfStock && !isInCart}
+                                    disabled={isAdding || (isOutOfStock && !isInCart)}
                                     className={`w-2/3 text-[10px] sm:text-xs font-bold py-2 sm:py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all duration-300 ${
-                                        isOutOfStock && !isInCart 
+                                        isAdding || (isOutOfStock && !isInCart)
                                             ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
                                             : isInCart 
                                                 ? 'bg-green-600 hover:bg-green-500 text-white shadow-[0_0_20px_rgba(34,197,94,0.4)] hover:shadow-[0_0_30px_rgba(34,197,94,0.6)] hover:-translate-y-1 active:scale-95' 
@@ -155,8 +166,17 @@ export default function ProductCard({ product }) {
                                 >
                                     {isOutOfStock && !isInCart ? (
                                         'Sold Out'
+                                    ) : isAdding ? (
+                                        // 🚨 NEW: The loading spinner SVG
+                                        <>
+                                            <svg className="animate-spin h-3 w-3 sm:h-4 sm:w-4 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Adding...
+                                        </>
                                     ) : isInCart ? (
-                                        <><span>✓</span> In Cart</>
+                                        <><span>✓</span> Go to Cart</>
                                     ) : (
                                         <><span>🛒</span> Add</>
                                     )}
