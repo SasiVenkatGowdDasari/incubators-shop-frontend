@@ -27,11 +27,11 @@ export default function ManageInventory() {
         id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: '', capacity: '', warranty: '', shippingOptions: '', active: true
     });
 
-    // Holds existing media from the database (Used during Edits)
+    // Holds URLs already stored in the DB
     const [existingImages, setExistingImages] = useState([]);
     const [existingVideos, setExistingVideos] = useState([]);
     
-    // Holds brand new files selected from the local computer
+    // Holds actual File objects selected from the computer
     const [newImages, setNewImages] = useState([]);
     const [newVideos, setNewVideos] = useState([]);
 
@@ -65,7 +65,7 @@ export default function ManageInventory() {
             id: product.id, title: product.title || '', description: product.description || '', actualPrice: product.actualPrice || '', currentPrice: product.currentPrice || '', stockQuantity: product.stockQuantity || '', material: product.material || '', type: product.type || 'Fully Automatic', capacity: product.capacity || '', warranty: product.warranty || '', shippingOptions: product.shippingOptions || '', active: product.active !== undefined ? product.active : true
         });
         
-        // Extract and format existing DB URLs
+        // Safely parse existing URLs from the database
         setExistingImages(product.imageUrl ? product.imageUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         setExistingVideos(product.videoUrl ? product.videoUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         
@@ -94,14 +94,14 @@ export default function ManageInventory() {
     const handleNewImagesChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             if (isEditMode) {
-                // Edit Mode: Safely append new files to the existing queue
+                // Edit Mode: Append files securely so we don't lose pending files
                 setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
             } else {
-                // Add Mode: Overwrite the queue completely (like native HTML)
+                // Add Mode: Replace entirely like native HTML behavior
                 setNewImages(Array.from(e.target.files));
             }
         }
-        e.target.value = ''; // Reset input to allow re-selection of the same file
+        e.target.value = ''; // Reset input to allow re-selection
     };
 
     const handleNewVideosChange = (e) => {
@@ -132,11 +132,15 @@ export default function ManageInventory() {
             let newImgUrls = [];
             let newVidUrls = [];
 
-            // 1. DIRECT UPLOAD TO CLOUDINARY
-            if (newImages.length > 0) {
+            // FETCH CLOUDINARY SIGNATURE ONCE FOR ENTIRE BATCH (Huge speed boost)
+            let signature, timestamp, apiKey, cloudName;
+            if (newImages.length > 0 || newVideos.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
-                const { signature, timestamp, apiKey, cloudName } = sigRes.data;
-                
+                ({ signature, timestamp, apiKey, cloudName } = sigRes.data);
+            }
+
+            // 1. UPLOAD NEW IMAGES TO CLOUDINARY
+            if (newImages.length > 0) {
                 for (const file of newImages) {
                     const uploadData = new FormData();
                     uploadData.append("file", file);
@@ -148,10 +152,8 @@ export default function ManageInventory() {
                 }
             }
 
+            // 2. UPLOAD NEW VIDEOS TO CLOUDINARY
             if (newVideos.length > 0) {
-                const sigRes = await api.get('/cloudinary/sign');
-                const { signature, timestamp, apiKey, cloudName } = sigRes.data;
-
                 for (const file of newVideos) {
                     const uploadData = new FormData();
                     uploadData.append("file", file);
@@ -163,12 +165,12 @@ export default function ManageInventory() {
                 }
             }
 
-            // 2. COMBINE MEDIA URLs SAFELY
+            // 3. COMBINE OLD AND NEW SAFELY
             // Existing URLs minus the ones the user clicked "X" on, plus the newly uploaded ones.
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // 3. SEND TO SPRING BOOT (Bypass Tomcat PUT limitations)
+            // 4. SEND TEXT URLs TO BACKEND
             const payload = new URLSearchParams();
             
             Object.keys(formData).forEach(key => {
@@ -179,12 +181,19 @@ export default function ManageInventory() {
             payload.append('imageUrls', finalImageUrls);
             payload.append('videoUrls', finalVideoUrls);
 
-            // Using URLSearchParams naturally triggers application/x-www-form-urlencoded
+            // Using toString() forces Axios to send as application/x-www-form-urlencoded
+            // This permanently prevents Tomcat 400 Bad Request errors on PUT mappings!
+            const config = {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            };
+
             if (isEditMode) {
-                await api.put(`/products/${formData.id}`, payload);
+                await api.put(`/products/${formData.id}`, payload.toString(), config);
                 showToast('Product Updated Successfully!', 'success');
             } else {
-                await api.post('/products', payload);
+                await api.post('/products', payload.toString(), config);
                 showToast('Product Added Successfully!', 'success');
             }
             
@@ -448,7 +457,7 @@ export default function ManageInventory() {
                             <div className="md:col-span-2 border-t border-gray-800/80 pt-6 md:pt-8 mt-2 md:mt-4">
                                 <h3 className="text-white font-extrabold mb-4 md:mb-6 text-lg border-l-4 border-blue-500 pl-3">Media Management</h3>
 
-                                {/* OLD EXISTING MEDIA ROW (Displays when Editing) */}
+                                {/* EXISTING MEDIA ROW (Displays when Editing) */}
                                 {isEditMode && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
                                         {existingImages.length > 0 && (
