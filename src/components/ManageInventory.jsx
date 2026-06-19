@@ -85,20 +85,28 @@ export default function ManageInventory() {
     }, [products, searchParams, setSearchParams, openEditModal]);
 
     // ==========================================
-    // MULTIPLE FILE APPENDING LOGIC
+    // DYNAMIC FILE HANDLERS (ADD vs EDIT)
     // ==========================================
     const handleNewImagesChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
-            // Append newly selected files to our permanent array
-            setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
+            if (isEditMode) {
+                // Edit Mode: Append files securely so we don't lose pending files
+                setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
+            } else {
+                // Add Mode: Replace entirely like native HTML behavior
+                setNewImages(Array.from(e.target.files));
+            }
         }
-        // Forcefully wipe the browser's native input so you can click it again to add more!
-        e.target.value = ''; 
+        e.target.value = ''; // Reset input to allow re-selection
     };
 
     const handleNewVideosChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
-            setNewVideos(prev => [...prev, ...Array.from(e.target.files)]);
+            if (isEditMode) {
+                setNewVideos(prev => [...prev, ...Array.from(e.target.files)]);
+            } else {
+                setNewVideos(Array.from(e.target.files));
+            }
         }
         e.target.value = '';
     };
@@ -164,7 +172,6 @@ export default function ManageInventory() {
             data.append('imageUrls', finalImageUrls);
             data.append('videoUrls', finalVideoUrls);
 
-            // Notice we removed the custom 'Content-Type' header here so Axios can auto-generate the boundaries!
             if (isEditMode) {
                 await api.put(`/products/${formData.id}`, data);
                 showToast('Product Updated Successfully!', 'success');
@@ -471,18 +478,22 @@ export default function ManageInventory() {
                                     <div>
                                         <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-3">Upload New Images</label>
                                         
+                                        {/* Hidden Input wrapped in a custom button label */}
                                         <label className="flex items-center justify-center w-full bg-[#0B1120] border-2 border-dashed border-gray-700 hover:border-blue-500 text-gray-400 hover:text-white py-3.5 rounded-xl cursor-pointer transition-all mb-3 group">
                                             <span className="flex items-center gap-2 font-bold text-sm">
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                                                Select Images
+                                                {(!isEditMode && newImages.length > 0) ? 'Replace Selection' : 'Select Images'}
                                             </span>
                                             {/* Hide native input completely */}
                                             <input type="file" multiple accept="image/*" onChange={handleNewImagesChange} className="hidden" />
                                         </label>
 
-                                        {/* Custom List of Pending Image Uploads with Names & Previews */}
+                                        {/* List showing names of pending image uploads */}
                                         {newImages.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-3 border-t border-blue-500/20 mt-3">
+                                            <div className="flex flex-col gap-2 pt-2 border-t border-blue-500/20 mt-2">
+                                                <div className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">
+                                                    Total Added: {newImages.length} Image{newImages.length > 1 ? 's' : ''}
+                                                </div>
                                                 {newImages.map((file, idx) => (
                                                     <div key={idx} className="flex justify-between items-center bg-[#0B1120] border border-blue-500/30 px-3 py-2 rounded-lg shadow-sm">
                                                         <div className="flex items-center gap-3 overflow-hidden">
@@ -500,18 +511,22 @@ export default function ManageInventory() {
                                     <div>
                                         <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-3">Upload New Videos</label>
                                         
+                                        {/* Hidden Input wrapped in a custom button label */}
                                         <label className="flex items-center justify-center w-full bg-[#0B1120] border-2 border-dashed border-gray-700 hover:border-purple-500 text-gray-400 hover:text-white py-3.5 rounded-xl cursor-pointer transition-all mb-3 group">
                                             <span className="flex items-center gap-2 font-bold text-sm">
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                                Select Videos
+                                                {(!isEditMode && newVideos.length > 0) ? 'Replace Selection' : 'Select Videos'}
                                             </span>
                                             {/* Hide native input completely */}
                                             <input type="file" multiple accept="video/*" onChange={handleNewVideosChange} className="hidden" />
                                         </label>
 
-                                        {/* Custom List of Pending Video Uploads with Names & Previews */}
+                                        {/* List showing names of pending video uploads */}
                                         {newVideos.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-3 border-t border-purple-500/20 mt-3">
+                                            <div className="flex flex-col gap-2 pt-2 border-t border-purple-500/20 mt-2">
+                                                <div className="text-[10px] text-purple-400 font-bold uppercase tracking-widest mt-1">
+                                                    Total Added: {newVideos.length} Video{newVideos.length > 1 ? 's' : ''}
+                                                </div>
                                                 {newVideos.map((file, idx) => (
                                                     <div key={idx} className="flex justify-between items-center bg-[#0B1120] border border-purple-500/30 px-3 py-2 rounded-lg shadow-sm">
                                                         <div className="flex items-center gap-3 overflow-hidden">
