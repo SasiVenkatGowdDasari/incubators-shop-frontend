@@ -90,14 +90,12 @@ export default function ManageInventory() {
     const handleNewImagesChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             if (isEditMode) {
-                // Edit Mode: Append files securely so we don't lose pending files
                 setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
             } else {
-                // Add Mode: Replace entirely like native HTML behavior
                 setNewImages(Array.from(e.target.files));
             }
         }
-        e.target.value = ''; // Reset input to allow re-selection
+        e.target.value = ''; 
     };
 
     const handleNewVideosChange = (e) => {
@@ -134,7 +132,7 @@ export default function ManageInventory() {
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
                 
                 for (const file of newImages) {
-                    const uploadData = new FormData();
+                    const uploadData = new FormData(); // FormData is still required here for Cloudinary API
                     uploadData.append("file", file);
                     uploadData.append("api_key", apiKey);
                     uploadData.append("timestamp", timestamp);
@@ -164,19 +162,20 @@ export default function ManageInventory() {
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // 4. SEND TEXT URLs TO BACKEND
-            const data = new FormData();
+            // 4. SEND TEXT URLs TO BACKEND 
+            // 🚨 FIX: Using URLSearchParams bypasses the Spring Boot PUT limitation!
+            const payload = new URLSearchParams();
             Object.keys(formData).forEach(key => {
-                if (key !== 'id') data.append(key, formData[key]);
+                if (key !== 'id') payload.append(key, formData[key]);
             });
-            data.append('imageUrls', finalImageUrls);
-            data.append('videoUrls', finalVideoUrls);
+            payload.append('imageUrls', finalImageUrls);
+            payload.append('videoUrls', finalVideoUrls);
 
             if (isEditMode) {
-                await api.put(`/products/${formData.id}`, data);
+                await api.put(`/products/${formData.id}`, payload);
                 showToast('Product Updated Successfully!', 'success');
             } else {
-                await api.post('/products', data);
+                await api.post('/products', payload);
                 showToast('Product Added Successfully!', 'success');
             }
             
@@ -478,7 +477,6 @@ export default function ManageInventory() {
                                     <div>
                                         <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-3">Upload New Images</label>
                                         
-                                        {/* Hidden Input wrapped in a custom button label */}
                                         <label className="flex items-center justify-center w-full bg-[#0B1120] border-2 border-dashed border-gray-700 hover:border-blue-500 text-gray-400 hover:text-white py-3.5 rounded-xl cursor-pointer transition-all mb-3 group">
                                             <span className="flex items-center gap-2 font-bold text-sm">
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
@@ -488,10 +486,10 @@ export default function ManageInventory() {
                                             <input type="file" multiple accept="image/*" onChange={handleNewImagesChange} className="hidden" />
                                         </label>
 
-                                        {/* List showing names of pending image uploads */}
+                                        {/* Custom List of Pending Image Uploads with Names & Previews */}
                                         {newImages.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-2 border-t border-blue-500/20 mt-2">
-                                                <div className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">
+                                            <div className="flex flex-col gap-2 pt-3 border-t border-blue-500/20 mt-3">
+                                                <div className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">
                                                     Total Added: {newImages.length} Image{newImages.length > 1 ? 's' : ''}
                                                 </div>
                                                 {newImages.map((file, idx) => (
@@ -511,7 +509,6 @@ export default function ManageInventory() {
                                     <div>
                                         <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-3">Upload New Videos</label>
                                         
-                                        {/* Hidden Input wrapped in a custom button label */}
                                         <label className="flex items-center justify-center w-full bg-[#0B1120] border-2 border-dashed border-gray-700 hover:border-purple-500 text-gray-400 hover:text-white py-3.5 rounded-xl cursor-pointer transition-all mb-3 group">
                                             <span className="flex items-center gap-2 font-bold text-sm">
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
@@ -521,10 +518,10 @@ export default function ManageInventory() {
                                             <input type="file" multiple accept="video/*" onChange={handleNewVideosChange} className="hidden" />
                                         </label>
 
-                                        {/* List showing names of pending video uploads */}
+                                        {/* Custom List of Pending Video Uploads with Names & Previews */}
                                         {newVideos.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-2 border-t border-purple-500/20 mt-2">
-                                                <div className="text-[10px] text-purple-400 font-bold uppercase tracking-widest mt-1">
+                                            <div className="flex flex-col gap-2 pt-3 border-t border-purple-500/20 mt-3">
+                                                <div className="text-[10px] text-purple-400 font-bold uppercase tracking-widest">
                                                     Total Added: {newVideos.length} Video{newVideos.length > 1 ? 's' : ''}
                                                 </div>
                                                 {newVideos.map((file, idx) => (
