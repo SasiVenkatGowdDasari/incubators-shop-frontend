@@ -27,11 +27,11 @@ export default function ManageInventory() {
         id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: '', capacity: '', warranty: '', shippingOptions: '', active: true
     });
 
-    // Holds URLs already stored in the DB
+    // Holds existing media from the database (Used during Edits)
     const [existingImages, setExistingImages] = useState([]);
     const [existingVideos, setExistingVideos] = useState([]);
     
-    // Holds actual File objects selected from the computer
+    // Holds brand new files selected from the local computer
     const [newImages, setNewImages] = useState([]);
     const [newVideos, setNewVideos] = useState([]);
 
@@ -52,7 +52,10 @@ export default function ManageInventory() {
 
     const openAddModal = useCallback(() => {
         setFormData({ id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: 'Fully Automatic', capacity: '', warranty: '', shippingOptions: '', active: true });
-        setExistingImages([]); setExistingVideos([]); setNewImages([]); setNewVideos([]);
+        setExistingImages([]); 
+        setExistingVideos([]); 
+        setNewImages([]); 
+        setNewVideos([]);
         setIsEditMode(false);
         setIsModalOpen(true);
     }, []);
@@ -62,7 +65,7 @@ export default function ManageInventory() {
             id: product.id, title: product.title || '', description: product.description || '', actualPrice: product.actualPrice || '', currentPrice: product.currentPrice || '', stockQuantity: product.stockQuantity || '', material: product.material || '', type: product.type || 'Fully Automatic', capacity: product.capacity || '', warranty: product.warranty || '', shippingOptions: product.shippingOptions || '', active: product.active !== undefined ? product.active : true
         });
         
-        // Safely parse existing URLs
+        // Extract and format existing DB URLs
         setExistingImages(product.imageUrl ? product.imageUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         setExistingVideos(product.videoUrl ? product.videoUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         
@@ -86,19 +89,19 @@ export default function ManageInventory() {
     }, [products, searchParams, setSearchParams, openEditModal]);
 
     // ==========================================
-    // DYNAMIC FILE HANDLERS (ADD vs EDIT)
+    // DYNAMIC FILE HANDLERS (ADD vs EDIT logic)
     // ==========================================
     const handleNewImagesChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             if (isEditMode) {
-                // Edit Mode: Append files securely so we don't lose pending files
+                // Edit Mode: Safely append new files to the existing queue
                 setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
             } else {
-                // Add Mode: Replace entirely like native HTML behavior
+                // Add Mode: Overwrite the queue completely (like native HTML)
                 setNewImages(Array.from(e.target.files));
             }
         }
-        e.target.value = ''; // Reset input to allow re-selection
+        e.target.value = ''; // Reset input to allow re-selection of the same file
     };
 
     const handleNewVideosChange = (e) => {
@@ -129,7 +132,7 @@ export default function ManageInventory() {
             let newImgUrls = [];
             let newVidUrls = [];
 
-            // 1. UPLOAD NEW IMAGES TO CLOUDINARY
+            // 1. DIRECT UPLOAD TO CLOUDINARY
             if (newImages.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
@@ -145,7 +148,6 @@ export default function ManageInventory() {
                 }
             }
 
-            // 2. UPLOAD NEW VIDEOS TO CLOUDINARY
             if (newVideos.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
@@ -161,12 +163,14 @@ export default function ManageInventory() {
                 }
             }
 
-            // 3. COMBINE OLD AND NEW SAFELY
+            // 2. COMBINE MEDIA URLs SAFELY
+            // Existing URLs minus the ones the user clicked "X" on, plus the newly uploaded ones.
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // 4. SEND TEXT URLs TO BACKEND (Fixes the 400 Bad Request Bug!)
+            // 3. SEND TO SPRING BOOT (Bypass Tomcat PUT limitations)
             const payload = new URLSearchParams();
+            
             Object.keys(formData).forEach(key => {
                 if (key !== 'id' && formData[key] !== null && formData[key] !== undefined) {
                     payload.append(key, formData[key]);
@@ -175,18 +179,12 @@ export default function ManageInventory() {
             payload.append('imageUrls', finalImageUrls);
             payload.append('videoUrls', finalVideoUrls);
 
-            // Explicitly set content type to prevent Axios/Tomcat conflict
-            const config = {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            };
-
+            // Using URLSearchParams naturally triggers application/x-www-form-urlencoded
             if (isEditMode) {
-                await api.put(`/products/${formData.id}`, payload, config);
+                await api.put(`/products/${formData.id}`, payload);
                 showToast('Product Updated Successfully!', 'success');
             } else {
-                await api.post('/products', payload, config);
+                await api.post('/products', payload);
                 showToast('Product Added Successfully!', 'success');
             }
             
@@ -450,36 +448,38 @@ export default function ManageInventory() {
                             <div className="md:col-span-2 border-t border-gray-800/80 pt-6 md:pt-8 mt-2 md:mt-4">
                                 <h3 className="text-white font-extrabold mb-4 md:mb-6 text-lg border-l-4 border-blue-500 pl-3">Media Management</h3>
 
-                                {/* EXISTING MEDIA ROW (Displays when Editing) */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
-                                    {existingImages.length > 0 && (
-                                        <div className="bg-black/30 p-4 rounded-xl border border-gray-800">
-                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">🖼️ Current Images</p>
-                                            <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                                                {existingImages.map((url, i) => (
-                                                    <div key={i} className="relative w-20 md:w-24 h-20 md:h-24 shrink-0 border border-gray-700 rounded-lg overflow-hidden bg-black group">
-                                                        <img src={getMediaUrl(url)} className="w-full h-full object-cover opacity-70 group-hover:opacity-40 transition" alt="" />
-                                                        <button type="button" disabled={isSubmitting} onClick={() => setExistingImages(existingImages.filter(u => u !== url))} className="absolute inset-0 m-auto bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg font-bold opacity-0 group-hover:opacity-100 transition shadow-lg">&times;</button>
-                                                    </div>
-                                                ))}
+                                {/* OLD EXISTING MEDIA ROW (Displays when Editing) */}
+                                {isEditMode && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
+                                        {existingImages.length > 0 && (
+                                            <div className="bg-black/30 p-4 rounded-xl border border-gray-800">
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">🖼️ Current Images</p>
+                                                <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                                                    {existingImages.map((url, i) => (
+                                                        <div key={i} className="relative w-20 md:w-24 h-20 md:h-24 shrink-0 border border-gray-700 rounded-lg overflow-hidden bg-black group">
+                                                            <img src={getMediaUrl(url)} className="w-full h-full object-cover opacity-70 group-hover:opacity-40 transition" alt="" />
+                                                            <button type="button" disabled={isSubmitting} onClick={() => setExistingImages(existingImages.filter(u => u !== url))} className="absolute inset-0 m-auto bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg font-bold opacity-0 group-hover:opacity-100 transition shadow-lg">&times;</button>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {existingVideos.length > 0 && (
-                                        <div className="bg-black/30 p-4 rounded-xl border border-gray-800">
-                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">🎥 Current Videos</p>
-                                            <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                                                {existingVideos.map((url, i) => (
-                                                    <div key={i} className="relative w-32 md:w-36 h-20 md:h-24 shrink-0 border border-gray-700 rounded-lg overflow-hidden bg-black group">
-                                                        <video src={getMediaUrl(url)} className="w-full h-full object-cover opacity-70 group-hover:opacity-40 transition" />
-                                                        <button type="button" disabled={isSubmitting} onClick={() => setExistingVideos(existingVideos.filter(u => u !== url))} className="absolute inset-0 m-auto bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg font-bold opacity-0 group-hover:opacity-100 transition shadow-lg">&times;</button>
-                                                    </div>
-                                                ))}
+                                        {existingVideos.length > 0 && (
+                                            <div className="bg-black/30 p-4 rounded-xl border border-gray-800">
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">🎥 Current Videos</p>
+                                                <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                                                    {existingVideos.map((url, i) => (
+                                                        <div key={i} className="relative w-32 md:w-36 h-20 md:h-24 shrink-0 border border-gray-700 rounded-lg overflow-hidden bg-black group">
+                                                            <video src={getMediaUrl(url)} className="w-full h-full object-cover opacity-70 group-hover:opacity-40 transition" />
+                                                            <button type="button" disabled={isSubmitting} onClick={() => setExistingVideos(existingVideos.filter(u => u !== url))} className="absolute inset-0 m-auto bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg font-bold opacity-0 group-hover:opacity-100 transition shadow-lg">&times;</button>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* NEW MEDIA UPLOAD ROW */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 bg-blue-900/10 p-4 md:p-5 rounded-xl border border-blue-900/30">
