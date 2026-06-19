@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import axios from 'axios'; 
+import axios from 'axios';
 import api from '../services/api';
 import { ToastContext } from '../context/ToastContext';
 
@@ -8,7 +8,7 @@ const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
 const getMediaUrl = (urlStr) => {
     if (!urlStr) return '';
-    const firstUrl = urlStr.split(',')[0];
+    const firstUrl = urlStr.split(',')[0].trim();
     return firstUrl.startsWith('http') ? firstUrl : BACKEND_URL + firstUrl;
 };
 
@@ -30,7 +30,7 @@ export default function ManageInventory() {
     const [existingImages, setExistingImages] = useState([]);
     const [existingVideos, setExistingVideos] = useState([]);
     
-    // Proper Arrays for appending new files
+    // React state to hold our cumulative list of new files
     const [newImages, setNewImages] = useState([]);
     const [newVideos, setNewVideos] = useState([]);
 
@@ -60,8 +60,10 @@ export default function ManageInventory() {
         setFormData({
             id: product.id, title: product.title || '', description: product.description || '', actualPrice: product.actualPrice || '', currentPrice: product.currentPrice || '', stockQuantity: product.stockQuantity || '', material: product.material || '', type: product.type || 'Fully Automatic', capacity: product.capacity || '', warranty: product.warranty || '', shippingOptions: product.shippingOptions || '', active: product.active !== undefined ? product.active : true
         });
-        setExistingImages(product.imageUrl ? product.imageUrl.split(',') : []);
-        setExistingVideos(product.videoUrl ? product.videoUrl.split(',') : []);
+        
+        // Safely split and filter out empty strings to prevent joining errors
+        setExistingImages(product.imageUrl ? product.imageUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
+        setExistingVideos(product.videoUrl ? product.videoUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         setNewImages([]); setNewVideos([]);
         setIsEditMode(true);
         setIsModalOpen(true);
@@ -81,19 +83,18 @@ export default function ManageInventory() {
     }, [products, searchParams, setSearchParams, openEditModal]);
 
     // ==========================================
-    // 🚨 NEW: SECURE FILE APPENDING HANDLERS
+    // SECURE FILE APPENDING HANDLERS
     // ==========================================
     const handleNewImagesChange = (e) => {
-        if (e.target.files) {
-            // Take the previous images and ADD the newly selected ones
+        if (e.target.files && e.target.files.length > 0) {
+            // Append newly selected files to the existing array instead of replacing
             setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
         }
-        // Clear the hidden input so you can click it again safely
-        e.target.value = null; 
+        e.target.value = null; // Clear the native input to allow selecting the same file again
     };
 
     const handleNewVideosChange = (e) => {
-        if (e.target.files) {
+        if (e.target.files && e.target.files.length > 0) {
             setNewVideos(prev => [...prev, ...Array.from(e.target.files)]);
         }
         e.target.value = null;
@@ -113,38 +114,46 @@ export default function ManageInventory() {
         setIsSubmitting(true);
 
         try {
-            // 1. UPLOAD ALL NEW IMAGES DIRECTLY TO CLOUDINARY
             let newImgUrls = [];
-            for (const file of newImages) {
-                const sigRes = await api.get('/cloudinary/sign');
-                const { signature, timestamp, apiKey, cloudName } = sigRes.data;
-                const uploadData = new FormData();
-                uploadData.append("file", file);
-                uploadData.append("api_key", apiKey);
-                uploadData.append("timestamp", timestamp);
-                uploadData.append("signature", signature);
-                const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
-                newImgUrls.push(cloudinaryRes.data.secure_url);
-            }
-
-            // 2. UPLOAD ALL NEW VIDEOS DIRECTLY TO CLOUDINARY
             let newVidUrls = [];
-            for (const file of newVideos) {
+
+            // 1. UPLOAD NEW IMAGES
+            if (newImages.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
-                const uploadData = new FormData();
-                uploadData.append("file", file);
-                uploadData.append("api_key", apiKey);
-                uploadData.append("timestamp", timestamp);
-                uploadData.append("signature", signature);
-                const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, uploadData);
-                newVidUrls.push(cloudinaryRes.data.secure_url);
+                
+                for (const file of newImages) {
+                    const uploadData = new FormData();
+                    uploadData.append("file", file);
+                    uploadData.append("api_key", apiKey);
+                    uploadData.append("timestamp", timestamp);
+                    uploadData.append("signature", signature);
+                    const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
+                    newImgUrls.push(cloudinaryRes.data.secure_url);
+                }
             }
 
-            const finalImageUrls = [...existingImages, ...newImgUrls].join(',');
-            const finalVideoUrls = [...existingVideos, ...newVidUrls].join(',');
+            // 2. UPLOAD NEW VIDEOS
+            if (newVideos.length > 0) {
+                const sigRes = await api.get('/cloudinary/sign');
+                const { signature, timestamp, apiKey, cloudName } = sigRes.data;
 
-            // 3. SEND TEXT URLS TO SPRING BOOT
+                for (const file of newVideos) {
+                    const uploadData = new FormData();
+                    uploadData.append("file", file);
+                    uploadData.append("api_key", apiKey);
+                    uploadData.append("timestamp", timestamp);
+                    uploadData.append("signature", signature);
+                    const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, uploadData);
+                    newVidUrls.push(cloudinaryRes.data.secure_url);
+                }
+            }
+
+            // COMBINE OLD AND NEW SAFELY
+            const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
+            const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
+
+            // 3. SEND URLs TO BACKEND
             const data = new FormData();
             Object.keys(formData).forEach(key => {
                 if (key !== 'id') data.append(key, formData[key]);
@@ -420,6 +429,7 @@ export default function ManageInventory() {
                             <div className="md:col-span-2 border-t border-gray-800/80 pt-6 md:pt-8 mt-2 md:mt-4">
                                 <h3 className="text-white font-extrabold mb-4 md:mb-6 text-lg border-l-4 border-blue-500 pl-3">Media Management</h3>
 
+                                {/* OLD EXISTING MEDIA ROW (Displays when Editing) */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
                                     {existingImages.length > 0 && (
                                         <div className="bg-black/30 p-4 rounded-xl border border-gray-800">
@@ -450,44 +460,54 @@ export default function ManageInventory() {
                                     )}
                                 </div>
 
+                                {/* NEW MEDIA UPLOAD ROW */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 bg-blue-900/10 p-4 md:p-5 rounded-xl border border-blue-900/30">
+                                    
+                                    {/* Image Upload Column */}
                                     <div>
-                                        <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">Upload New Images</label>
+                                        <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider mb-3">Upload New Images</label>
                                         
-                                        {/* 🚨 CUSTOM LABEL TO HIDE THE NATIVE TEXT */}
-                                        <label className="cursor-pointer inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors mb-3">
-                                            <span>+ Choose Images</span>
+                                        {/* Hidden Input wrapped in a custom button label */}
+                                        <label className="flex items-center justify-center w-full bg-[#0B1120] border-2 border-dashed border-gray-700 hover:border-blue-500 text-gray-400 hover:text-white py-3.5 rounded-xl cursor-pointer transition-all mb-3 group">
+                                            <span className="flex items-center gap-2 font-bold text-sm">
+                                                <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                                Select Images
+                                            </span>
                                             <input type="file" multiple accept="image/*" onChange={handleNewImagesChange} className="hidden" />
                                         </label>
-                                        
-                                        {/* 🚨 PREVIEW AREA FOR NEW IMAGES */}
+
+                                        {/* List showing names of pending image uploads */}
                                         {newImages.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-2 border-t border-blue-500/20 mt-2">
+                                            <div className="flex flex-col gap-2 pt-2">
                                                 {newImages.map((file, idx) => (
-                                                    <div key={idx} className="flex justify-between items-center bg-[#0B1120] p-2.5 rounded-lg border border-gray-700">
-                                                        <span className="text-xs text-gray-300 truncate pr-2">{file.name}</span>
-                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewImage(idx)} className="text-red-500 hover:text-red-400 font-bold text-lg leading-none">&times;</button>
+                                                    <div key={idx} className="flex justify-between items-center bg-blue-500/10 border border-blue-500/30 px-3 py-2.5 rounded-lg shadow-inner">
+                                                        <span className="text-xs text-gray-300 font-medium truncate pr-4">🖼️ {file.name}</span>
+                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewImage(idx)} className="text-red-400 hover:text-red-300 text-lg leading-none font-bold shrink-0">&times;</button>
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
+                                    
+                                    {/* Video Upload Column */}
                                     <div>
-                                        <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-2">Upload New Videos</label>
+                                        <label className="block text-xs font-bold text-purple-400 uppercase tracking-wider mb-3">Upload New Videos</label>
                                         
-                                        {/* 🚨 CUSTOM LABEL TO HIDE THE NATIVE TEXT */}
-                                        <label className="cursor-pointer inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors mb-3">
-                                            <span>+ Choose Videos</span>
+                                        <label className="flex items-center justify-center w-full bg-[#0B1120] border-2 border-dashed border-gray-700 hover:border-purple-500 text-gray-400 hover:text-white py-3.5 rounded-xl cursor-pointer transition-all mb-3 group">
+                                            <span className="flex items-center gap-2 font-bold text-sm">
+                                                <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                                Select Videos
+                                            </span>
                                             <input type="file" multiple accept="video/*" onChange={handleNewVideosChange} className="hidden" />
                                         </label>
-                                        
-                                        {/* 🚨 PREVIEW AREA FOR NEW VIDEOS */}
+
+                                        {/* List showing names of pending video uploads */}
                                         {newVideos.length > 0 && (
-                                            <div className="flex flex-col gap-2 pt-2 border-t border-purple-500/20 mt-2">
+                                            <div className="flex flex-col gap-2 pt-2">
                                                 {newVideos.map((file, idx) => (
-                                                    <div key={idx} className="flex justify-between items-center bg-[#0B1120] p-2.5 rounded-lg border border-gray-700">
-                                                        <span className="text-xs text-gray-300 truncate pr-2">{file.name}</span>
-                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewVideo(idx)} className="text-red-500 hover:text-red-400 font-bold text-lg leading-none">&times;</button>
+                                                    <div key={idx} className="flex justify-between items-center bg-purple-500/10 border border-purple-500/30 px-3 py-2.5 rounded-lg shadow-inner">
+                                                        <span className="text-xs text-gray-300 font-medium truncate pr-4">🎥 {file.name}</span>
+                                                        <button type="button" disabled={isSubmitting} onClick={() => removeNewVideo(idx)} className="text-red-400 hover:text-red-300 text-lg leading-none font-bold shrink-0">&times;</button>
                                                     </div>
                                                 ))}
                                             </div>
