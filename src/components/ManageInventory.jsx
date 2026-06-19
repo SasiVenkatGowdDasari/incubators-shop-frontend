@@ -90,12 +90,14 @@ export default function ManageInventory() {
     const handleNewImagesChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             if (isEditMode) {
+                // Edit Mode: Append files securely so we don't lose pending files
                 setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
             } else {
+                // Add Mode: Replace entirely like native HTML behavior
                 setNewImages(Array.from(e.target.files));
             }
         }
-        e.target.value = ''; 
+        e.target.value = ''; // Reset input to allow re-selection
     };
 
     const handleNewVideosChange = (e) => {
@@ -126,13 +128,13 @@ export default function ManageInventory() {
             let newImgUrls = [];
             let newVidUrls = [];
 
-            // 1. UPLOAD NEW IMAGES TO CLOUDINARY
+            // 1. UPLOAD NEW IMAGES TO CLOUDINARY (Using FormData because Cloudinary expects it)
             if (newImages.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 const { signature, timestamp, apiKey, cloudName } = sigRes.data;
                 
                 for (const file of newImages) {
-                    const uploadData = new FormData(); // FormData is still required here for Cloudinary API
+                    const uploadData = new FormData();
                     uploadData.append("file", file);
                     uploadData.append("api_key", apiKey);
                     uploadData.append("timestamp", timestamp);
@@ -162,11 +164,15 @@ export default function ManageInventory() {
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // 4. SEND TEXT URLs TO BACKEND 
-            // 🚨 FIX: Using URLSearchParams bypasses the Spring Boot PUT limitation!
+            // ===================================================================
+            // 🚨 CRITICAL FIX: SEND TEXT URLs TO SPRING BOOT USING URLSearchParams
+            // This prevents the Tomcat 'PUT' error and avoids the 400 Bad Request!
+            // ===================================================================
             const payload = new URLSearchParams();
             Object.keys(formData).forEach(key => {
-                if (key !== 'id') payload.append(key, formData[key]);
+                if (key !== 'id' && formData[key] !== null && formData[key] !== undefined) {
+                    payload.append(key, formData[key]);
+                }
             });
             payload.append('imageUrls', finalImageUrls);
             payload.append('videoUrls', finalVideoUrls);
@@ -439,7 +445,7 @@ export default function ManageInventory() {
                             <div className="md:col-span-2 border-t border-gray-800/80 pt-6 md:pt-8 mt-2 md:mt-4">
                                 <h3 className="text-white font-extrabold mb-4 md:mb-6 text-lg border-l-4 border-blue-500 pl-3">Media Management</h3>
 
-                                {/* OLD EXISTING MEDIA ROW (Displays when Editing) */}
+                                {/* EXISTING MEDIA ROW (Displays when Editing) */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
                                     {existingImages.length > 0 && (
                                         <div className="bg-black/30 p-4 rounded-xl border border-gray-800">
@@ -482,11 +488,9 @@ export default function ManageInventory() {
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                                                 {(!isEditMode && newImages.length > 0) ? 'Replace Selection' : 'Select Images'}
                                             </span>
-                                            {/* Hide native input completely */}
                                             <input type="file" multiple accept="image/*" onChange={handleNewImagesChange} className="hidden" />
                                         </label>
 
-                                        {/* Custom List of Pending Image Uploads with Names & Previews */}
                                         {newImages.length > 0 && (
                                             <div className="flex flex-col gap-2 pt-3 border-t border-blue-500/20 mt-3">
                                                 <div className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">
@@ -514,11 +518,9 @@ export default function ManageInventory() {
                                                 <svg className="w-5 h-5 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                                 {(!isEditMode && newVideos.length > 0) ? 'Replace Selection' : 'Select Videos'}
                                             </span>
-                                            {/* Hide native input completely */}
                                             <input type="file" multiple accept="video/*" onChange={handleNewVideosChange} className="hidden" />
                                         </label>
 
-                                        {/* Custom List of Pending Video Uploads with Names & Previews */}
                                         {newVideos.length > 0 && (
                                             <div className="flex flex-col gap-2 pt-3 border-t border-purple-500/20 mt-3">
                                                 <div className="text-[10px] text-purple-400 font-bold uppercase tracking-widest">
