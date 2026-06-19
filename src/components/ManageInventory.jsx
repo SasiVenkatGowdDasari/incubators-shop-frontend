@@ -27,11 +27,8 @@ export default function ManageInventory() {
         id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: '', capacity: '', warranty: '', shippingOptions: '', active: true
     });
 
-    // Holds URLs already stored in the DB
     const [existingImages, setExistingImages] = useState([]);
     const [existingVideos, setExistingVideos] = useState([]);
-    
-    // Holds actual File objects selected from the computer
     const [newImages, setNewImages] = useState([]);
     const [newVideos, setNewVideos] = useState([]);
 
@@ -43,7 +40,7 @@ export default function ManageInventory() {
                 setProducts(sortedProducts);
                 setLoading(false);
             } catch (err) {
-                console.error(err);
+                console.error("Failed to load products:", err);
                 setLoading(false);
             }
         };
@@ -65,7 +62,6 @@ export default function ManageInventory() {
             id: product.id, title: product.title || '', description: product.description || '', actualPrice: product.actualPrice || '', currentPrice: product.currentPrice || '', stockQuantity: product.stockQuantity || '', material: product.material || '', type: product.type || 'Fully Automatic', capacity: product.capacity || '', warranty: product.warranty || '', shippingOptions: product.shippingOptions || '', active: product.active !== undefined ? product.active : true
         });
         
-        // Safely parse existing URLs from the database
         setExistingImages(product.imageUrl ? product.imageUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         setExistingVideos(product.videoUrl ? product.videoUrl.split(',').map(s => s.trim()).filter(Boolean) : []);
         
@@ -88,20 +84,15 @@ export default function ManageInventory() {
         }
     }, [products, searchParams, setSearchParams, openEditModal]);
 
-    // ==========================================
-    // DYNAMIC FILE HANDLERS (ADD vs EDIT logic)
-    // ==========================================
     const handleNewImagesChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             if (isEditMode) {
-                // Edit Mode: Append files securely so we don't lose pending files
                 setNewImages(prev => [...prev, ...Array.from(e.target.files)]);
             } else {
-                // Add Mode: Replace entirely like native HTML behavior
                 setNewImages(Array.from(e.target.files));
             }
         }
-        e.target.value = ''; // Reset input to allow re-selection
+        e.target.value = ''; 
     };
 
     const handleNewVideosChange = (e) => {
@@ -115,14 +106,8 @@ export default function ManageInventory() {
         e.target.value = '';
     };
 
-    const removeNewImage = (indexToRemove) => {
-        setNewImages(prev => prev.filter((_, index) => index !== indexToRemove));
-    };
-
-    const removeNewVideo = (indexToRemove) => {
-        setNewVideos(prev => prev.filter((_, index) => index !== indexToRemove));
-    };
-    // ==========================================
+    const removeNewImage = (indexToRemove) => setNewImages(prev => prev.filter((_, index) => index !== indexToRemove));
+    const removeNewVideo = (indexToRemove) => setNewVideos(prev => prev.filter((_, index) => index !== indexToRemove));
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
@@ -132,14 +117,18 @@ export default function ManageInventory() {
             let newImgUrls = [];
             let newVidUrls = [];
 
-            // FETCH CLOUDINARY SIGNATURE ONCE FOR ENTIRE BATCH (Huge speed boost)
+            // 1. Fetch Signature
             let signature, timestamp, apiKey, cloudName;
             if (newImages.length > 0 || newVideos.length > 0) {
                 const sigRes = await api.get('/cloudinary/sign');
                 ({ signature, timestamp, apiKey, cloudName } = sigRes.data);
+                
+                if (!signature || !apiKey || !cloudName) {
+                    throw new Error("Invalid Cloudinary signature payload from backend.");
+                }
             }
 
-            // 1. UPLOAD NEW IMAGES TO CLOUDINARY
+            // 2. Upload Images
             if (newImages.length > 0) {
                 for (const file of newImages) {
                     const uploadData = new FormData();
@@ -147,12 +136,13 @@ export default function ManageInventory() {
                     uploadData.append("api_key", apiKey);
                     uploadData.append("timestamp", timestamp);
                     uploadData.append("signature", signature);
-                    const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
-                    newImgUrls.push(cloudinaryRes.data.secure_url);
+                    
+                    const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
+                    newImgUrls.push(res.data.secure_url);
                 }
             }
 
-            // 2. UPLOAD NEW VIDEOS TO CLOUDINARY
+            // 3. Upload Videos
             if (newVideos.length > 0) {
                 for (const file of newVideos) {
                     const uploadData = new FormData();
@@ -160,19 +150,18 @@ export default function ManageInventory() {
                     uploadData.append("api_key", apiKey);
                     uploadData.append("timestamp", timestamp);
                     uploadData.append("signature", signature);
-                    const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, uploadData);
-                    newVidUrls.push(cloudinaryRes.data.secure_url);
+                    
+                    const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, uploadData);
+                    newVidUrls.push(res.data.secure_url);
                 }
             }
 
-            // 3. COMBINE OLD AND NEW SAFELY
-            // Existing URLs minus the ones the user clicked "X" on, plus the newly uploaded ones.
+            // 4. Combine URLs
             const finalImageUrls = [...existingImages, ...newImgUrls].filter(Boolean).join(',');
             const finalVideoUrls = [...existingVideos, ...newVidUrls].filter(Boolean).join(',');
 
-            // 4. SEND TEXT URLs TO BACKEND
+            // 5. Construct Payload Safely
             const payload = new URLSearchParams();
-            
             Object.keys(formData).forEach(key => {
                 if (key !== 'id' && formData[key] !== null && formData[key] !== undefined) {
                     payload.append(key, formData[key]);
@@ -181,27 +170,24 @@ export default function ManageInventory() {
             payload.append('imageUrls', finalImageUrls);
             payload.append('videoUrls', finalVideoUrls);
 
-            // Using toString() forces Axios to send as application/x-www-form-urlencoded
-            // This permanently prevents Tomcat 400 Bad Request errors on PUT mappings!
+            // Pass the URLSearchParams object directly. Axios will handle the application/x-www-form-urlencoded formatting perfectly.
             const config = {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
             };
 
             if (isEditMode) {
-                await api.put(`/products/${formData.id}`, payload.toString(), config);
+                await api.put(`/products/${formData.id}`, payload, config);
                 showToast('Product Updated Successfully!', 'success');
             } else {
-                await api.post('/products', payload.toString(), config);
+                await api.post('/products', payload, config);
                 showToast('Product Added Successfully!', 'success');
             }
             
             setIsModalOpen(false);
             setRefreshKey(p => p + 1);
         } catch (err) {
-            console.error(err);
-            showToast('Failed to save product. Please check your network connection.', 'error');
+            console.error("Submission Error:", err);
+            showToast('Failed to save product/media. Please try again.', 'error');
         } finally {
             setIsSubmitting(false);
         }
