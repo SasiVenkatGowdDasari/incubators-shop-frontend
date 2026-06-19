@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import axios from 'axios'; // <-- ADDED AXIOS FOR CLOUDINARY
 import api from '../services/api';
 import { ToastContext } from '../context/ToastContext';
 
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
-// Helper to fix the Double URL bug and dynamically route Cloudinary vs Local images
 const getMediaUrl = (urlStr) => {
     if (!urlStr) return '';
     const firstUrl = urlStr.split(',')[0];
@@ -24,18 +24,7 @@ export default function ManageInventory() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [formData, setFormData] = useState({
-        id: null,
-        title: '',
-        description: '',
-        actualPrice: '',
-        currentPrice: '',
-        stockQuantity: '',
-        material: '',
-        type: '',
-        capacity: '',
-        warranty: '',
-        shippingOptions: '',
-        active: true
+        id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: '', capacity: '', warranty: '', shippingOptions: '', active: true
     });
 
     const [existingImages, setExistingImages] = useState([]);
@@ -59,7 +48,7 @@ export default function ManageInventory() {
     }, [refreshKey]);
 
     const openAddModal = useCallback(() => {
-        setFormData({ id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: '', capacity: '', warranty: '', shippingOptions: '', active: true });
+        setFormData({ id: null, title: '', description: '', actualPrice: '', currentPrice: '', stockQuantity: '', material: '', type: 'Fully Automatic', capacity: '', warranty: '', shippingOptions: '', active: true });
         setExistingImages([]); setExistingVideos([]); setNewImages([]); setNewVideos([]);
         setIsEditMode(false);
         setIsModalOpen(true);
@@ -67,18 +56,7 @@ export default function ManageInventory() {
 
     const openEditModal = useCallback((product) => {
         setFormData({
-            id: product.id,
-            title: product.title || '',
-            description: product.description || '',
-            actualPrice: product.actualPrice || '',
-            currentPrice: product.currentPrice || '',
-            stockQuantity: product.stockQuantity || '',
-            material: product.material || '',
-            type: product.type || '',
-            capacity: product.capacity || '',
-            warranty: product.warranty || '',
-            shippingOptions: product.shippingOptions || '',
-            active: product.active !== undefined ? product.active : true
+            id: product.id, title: product.title || '', description: product.description || '', actualPrice: product.actualPrice || '', currentPrice: product.currentPrice || '', stockQuantity: product.stockQuantity || '', material: product.material || '', type: product.type || 'Fully Automatic', capacity: product.capacity || '', warranty: product.warranty || '', shippingOptions: product.shippingOptions || '', active: product.active !== undefined ? product.active : true
         });
         setExistingImages(product.imageUrl ? product.imageUrl.split(',') : []);
         setExistingVideos(product.videoUrl ? product.videoUrl.split(',') : []);
@@ -99,21 +77,51 @@ export default function ManageInventory() {
             }
         }
     }, [products, searchParams, setSearchParams, openEditModal]);
+
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
 
-        const data = new FormData();
-        Object.keys(formData).forEach(key => {
-            if (key !== 'id') data.append(key, formData[key]);
-        });
-
-        data.append('existingImageUrls', existingImages.join(','));
-        data.append('existingVideoUrls', existingVideos.join(','));
-        Array.from(newImages).forEach(file => data.append('images', file));
-        Array.from(newVideos).forEach(file => data.append('videos', file));
-
         try {
+            // 1. UPLOAD ALL NEW IMAGES DIRECTLY TO CLOUDINARY
+            let newImgUrls = [];
+            for (const file of Array.from(newImages)) {
+                const sigRes = await api.get('/cloudinary/sign');
+                const { signature, timestamp, apiKey, cloudName } = sigRes.data;
+                const uploadData = new FormData();
+                uploadData.append("file", file);
+                uploadData.append("api_key", apiKey);
+                uploadData.append("timestamp", timestamp);
+                uploadData.append("signature", signature);
+                const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
+                newImgUrls.push(cloudinaryRes.data.secure_url);
+            }
+
+            // 2. UPLOAD ALL NEW VIDEOS DIRECTLY TO CLOUDINARY
+            let newVidUrls = [];
+            for (const file of Array.from(newVideos)) {
+                const sigRes = await api.get('/cloudinary/sign');
+                const { signature, timestamp, apiKey, cloudName } = sigRes.data;
+                const uploadData = new FormData();
+                uploadData.append("file", file);
+                uploadData.append("api_key", apiKey);
+                uploadData.append("timestamp", timestamp);
+                uploadData.append("signature", signature);
+                const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, uploadData);
+                newVidUrls.push(cloudinaryRes.data.secure_url);
+            }
+
+            const finalImageUrls = [...existingImages, ...newImgUrls].join(',');
+            const finalVideoUrls = [...existingVideos, ...newVidUrls].join(',');
+
+            // 3. SEND TEXT URLS TO SPRING BOOT
+            const data = new FormData();
+            Object.keys(formData).forEach(key => {
+                if (key !== 'id') data.append(key, formData[key]);
+            });
+            data.append('imageUrls', finalImageUrls);
+            data.append('videoUrls', finalVideoUrls);
+
             if (isEditMode) {
                 await api.put(`/products/${formData.id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
                 showToast('Product Updated Successfully!', 'success');
@@ -121,17 +129,12 @@ export default function ManageInventory() {
                 await api.post('/products', data, { headers: { 'Content-Type': 'multipart/form-data' } });
                 showToast('Product Added Successfully!', 'success');
             }
+            
             setIsModalOpen(false);
             setRefreshKey(p => p + 1);
         } catch (err) {
-            // Extracting error from the backend response
-            const errorMsg = err.response?.data || err.message;
-            if (typeof errorMsg === 'string' && errorMsg.includes("File too large")) {
-                showToast(errorMsg, "error"); // Shows: "File too large: image.png..."
-            } else {
-                showToast('Failed to save product. Please check your image/video sizes.', 'error');
-            }
             console.error(err);
+            showToast('Failed to save product. Please check your network connection.', 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -315,7 +318,6 @@ export default function ManageInventory() {
                                     <div className="flex items-center gap-2 self-start sm:self-auto">
                                         <span className="text-[10px] uppercase text-gray-400 font-bold tracking-widest shrink-0">Status:</span>
 
-                                        {/* Custom Status Dropdown */}
                                         <div className="relative inline-block w-32">
                                             <select
                                                 value={formData.active}
@@ -344,7 +346,6 @@ export default function ManageInventory() {
                                 <h3 className="text-white font-bold mb-4 border-b border-gray-700 pb-4 text-lg">Specifications</h3>
                                 <div><label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Capacity</label><input required value={formData.capacity} onChange={(e) => setFormData({ ...formData, capacity: e.target.value })} placeholder="e.g. 100 Eggs" className="w-full bg-black/50 border border-gray-700 text-white rounded-lg p-3 focus:outline-none focus:border-blue-500 transition" /></div>
 
-                                {/* Custom Type Dropdown */}
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Type</label>
                                     <div className="relative">
@@ -354,10 +355,7 @@ export default function ManageInventory() {
                                             onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                                             className="w-full appearance-none bg-black/50 border border-gray-700 text-white rounded-lg p-3 pr-10 focus:outline-none focus:border-blue-500 transition cursor-pointer"
                                         >
-                                            {/* <option value="" disabled className="bg-gray-900 text-gray-500">Select Type</option> */}
                                             <option value="Fully Automatic" className="bg-gray-900 text-white">Fully Automatic</option>
-                                            {/* <option value="Semi Automatic" className="bg-gray-900 text-white">Semi Automatic</option>
-                                            <option value="Manual" className="bg-gray-900 text-white">Manual</option> */}
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -365,7 +363,6 @@ export default function ManageInventory() {
                                     </div>
                                 </div>
 
-                                {/* Custom Material Dropdown */}
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Material</label>
                                     <div className="relative">
@@ -375,11 +372,8 @@ export default function ManageInventory() {
                                             onChange={(e) => setFormData({ ...formData, material: e.target.value })}
                                             className="w-full appearance-none bg-black/50 border border-gray-700 text-white rounded-lg p-3 pr-10 focus:outline-none focus:border-blue-500 transition cursor-pointer"
                                         >
-                                            {/* <option value="" disabled className="bg-gray-900 text-gray-500">Select Material</option> */}
                                             <option value="Plywood" className="bg-gray-900 text-white">Plywood</option>
                                             <option value="Thermacole" className="bg-gray-900 text-white">Thermacole</option>
-                                            {/* <option value="Fiberglass" className="bg-gray-900 text-white">Fiberglass</option>
-                                            <option value="Metal" className="bg-gray-900 text-white">Metal</option> */}
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -450,7 +444,7 @@ export default function ManageInventory() {
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
-                                            {isEditMode ? 'Saving Changes...' : 'Publishing...'}
+                                            Uploading Media & Publishing...
                                         </>
                                     ) : (
                                         isEditMode ? 'Save Changes' : 'Publish Product to Catalog'

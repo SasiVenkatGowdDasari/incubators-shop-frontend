@@ -1,5 +1,6 @@
-import { useState, useContext, useRef, useEffect } from 'react';
+import { useState, useEffect,useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios'; // <-- ADDED AXIOS FOR CLOUDINARY
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext'; 
 import api from '../services/api';
@@ -168,11 +169,9 @@ export function ProfileForm({ initialUser, updateUser }) {
         setErrors(prev => ({ ...prev, mobileNumber: '' }));
         try {
             await api.post('/auth/check-mobile', { mobileNumber: formData.mobileNumber });
-            // HTTP 200 OK: Exists in DB. Block them.
             setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: false, checked: true, isAvailable: false } }));
             setErrors(prev => ({ ...prev, mobileNumber: 'Mobile number already exists, check with another one.' }));
         } catch (err) {
-            // HTTP 404 NOT FOUND: Free to use.
             if (err.response?.status === 404) {
                 setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, checking: false, checked: true, isAvailable: true } }));
                 setErrors(prev => ({ ...prev, mobileNumber: '' }));
@@ -196,14 +195,11 @@ export function ProfileForm({ initialUser, updateUser }) {
 
     const handleVerifyOtp = async () => {
         try {
-            // If the Java backend returns HTTP 200, it drops into this next line smoothly.
             await api.post('/auth/verify-mobile-otp', { mobileNumber: formData.mobileNumber, otp: otpFlow.mobileNumber.code });
-            
             setOtpFlow(prev => ({ ...prev, mobileNumber: { ...prev.mobileNumber, verified: true, sent: false, code: '' } }));
             setErrors(prev => ({ ...prev, mobileNumber: '' }));
             showToast(`Mobile number verified successfully!`, 'success');
         } catch (err) {
-            // If the Java backend returns HTTP 400 Bad Request, Axios jumps straight here!
             const errorMsg = err.response?.data || "Invalid or expired mobile OTP.";
             setErrors(prev => ({ ...prev, mobileNumber: errorMsg }));
             showToast(errorMsg, "error");
@@ -212,26 +208,46 @@ export function ProfileForm({ initialUser, updateUser }) {
 
     const handleSave = async () => {
         setIsSubmitting(true);
-        const fullAddress = `${formData.village}, ${formData.district}, ${formData.state}`;
-        const formDataToSend = new FormData();
-        formDataToSend.append('fullName', formData.fullName);
-        formDataToSend.append('email', formData.email);
-        formDataToSend.append('mobileNumber', formData.mobileNumber); 
-        formDataToSend.append('address', fullAddress);
-        
-        if (selectedImageFile) formDataToSend.append('profilePicture', selectedImageFile);
-
         try {
+            let uploadedProfilePicUrl = "";
+            
+            // 1. DIRECT UPLOAD PROFILE PICTURE TO CLOUDINARY
+            if (selectedImageFile) {
+                const sigRes = await api.get('/cloudinary/sign');
+                const { signature, timestamp, apiKey, cloudName } = sigRes.data;
+                
+                const uploadData = new FormData();
+                uploadData.append("file", selectedImageFile);
+                uploadData.append("api_key", apiKey);
+                uploadData.append("timestamp", timestamp);
+                uploadData.append("signature", signature);
+                
+                const cloudinaryRes = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, uploadData);
+                uploadedProfilePicUrl = cloudinaryRes.data.secure_url;
+            }
+
+            // 2. SEND ONLY URL TO SPRING BOOT
+            const fullAddress = `${formData.village}, ${formData.district}, ${formData.state}`;
+            const formDataToSend = new FormData();
+            formDataToSend.append('fullName', formData.fullName);
+            formDataToSend.append('email', formData.email);
+            formDataToSend.append('mobileNumber', formData.mobileNumber); 
+            formDataToSend.append('address', fullAddress);
+            if (uploadedProfilePicUrl) {
+                formDataToSend.append('profilePictureUrl', uploadedProfilePicUrl);
+            }
+
             const response = await api.put(`/profile/${initialUser.id}`, formDataToSend, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+            
             updateUser({ ...initialUser, ...response.data }); 
             setIsEditing(false);
             setOtpFlow({ mobileNumber: { checking: false, checked: false, isAvailable: false, sent: false, verified: false, code: '' } });
             showToast("Profile updated successfully!", "success");
         } catch (err) { 
             showToast("Failed to update profile. Please try again.", "error"); 
-            console.log(err)
+            console.error(err);
         } finally {
             setIsSubmitting(false);
         }
@@ -277,7 +293,7 @@ export function ProfileForm({ initialUser, updateUser }) {
             setPasswordStep(2);
         } catch (err) {
             setPasswordStatus({ type: 'error', message: "Password incorrect." });
-            console.log(err)
+            console.error(err);
         } finally {
             setIsPasswordVerifying(false);
         }
@@ -298,7 +314,7 @@ export function ProfileForm({ initialUser, updateUser }) {
             setTimeout(() => closePasswordModal(), 2000);
         } catch (err) {
             setPasswordStatus({ type: 'error', message: "Failed to update password. Please try again." });
-            console.log(err)
+            console.error(err);
         } finally {
             setIsPasswordSaving(false);
         }
@@ -457,7 +473,7 @@ export function ProfileForm({ initialUser, updateUser }) {
                                         disabled={isSaveDisabled} 
                                         className={`w-full sm:w-2/3 py-3.5 sm:py-4 rounded-xl font-bold text-sm sm:text-base text-white transition-all duration-300 shadow-lg flex items-center justify-center gap-2 ${isSaveDisabled ? 'bg-gray-700 cursor-not-allowed text-gray-400' : 'bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-green-500/25 transform hover:-translate-y-1'}`}
                                     >
-                                        {isSubmitting ? 'Saving...' : isSaveDisabled ? 'Fill required fields to Save' : 'Save Changes'}
+                                        {isSubmitting ? 'Saving Profile...' : isSaveDisabled ? 'Fill required fields to Save' : 'Save Changes'}
                                     </button>
                                 </>
                             )}

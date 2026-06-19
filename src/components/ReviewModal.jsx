@@ -1,11 +1,12 @@
 import { useState, useContext, useEffect } from 'react';
+import axios from 'axios'; // <-- ADDED AXIOS FOR CLOUDINARY
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
-import { ToastContext } from '../context/ToastContext'; // <-- ADDED
+import { ToastContext } from '../context/ToastContext';
 
 export default function ReviewModal({ productId, orderId, onClose, onSave }) {
     const { user } = useContext(AuthContext);
-    const { showToast } = useContext(ToastContext); // <-- ADDED
+    const { showToast } = useContext(ToastContext);
 
     // Form States
     const [rating, setRating] = useState(5);
@@ -18,19 +19,16 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
-        // Trigger entrance animation shortly after mounting
         const timer = setTimeout(() => setIsMounted(true), 10);
         return () => clearTimeout(timer);
     }, []);
 
     const handleClose = () => {
-        // Trigger exit animation before actually unmounting
         setIsMounted(false);
         setTimeout(() => onClose(), 300);
     };
 
     const handleFileChange = (e) => {
-        // Convert FileList to Array
         if (e.target.files) {
             setFiles(Array.from(e.target.files));
         }
@@ -44,32 +42,55 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
         e.preventDefault();
         setIsSubmitting(true);
 
-        const formData = new FormData();
-        formData.append("productId", productId);
-        formData.append("orderId", orderId);
-        formData.append("userId", user.id);
-        formData.append("rating", rating);
-        formData.append("comment", comment);
-
-        for (let i = 0; i < files.length; i++) {
-            formData.append("files", files[i]);
-        }
-
         try {
+            const uploadedMediaUrls = [];
+
+            // 1. UPLOAD DIRECTLY TO CLOUDINARY (Bypasses Backend RAM limits)
+            if (files.length > 0) {
+                for (const file of files) {
+                    // Get cryptographic signature from Spring Boot
+                    const sigRes = await api.get('/cloudinary/sign');
+                    const { signature, timestamp, apiKey, cloudName } = sigRes.data;
+
+                    const uploadData = new FormData();
+                    uploadData.append("file", file);
+                    uploadData.append("api_key", apiKey);
+                    uploadData.append("timestamp", timestamp);
+                    uploadData.append("signature", signature);
+
+                    const resourceType = file.type.startsWith('video/') ? 'video' : 'image';
+                    const cloudinaryRes = await axios.post(
+                        `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, 
+                        uploadData
+                    );
+                    
+                    uploadedMediaUrls.push(cloudinaryRes.data.secure_url);
+                }
+            }
+
+            // 2. SEND ONLY TEXT URLs TO SPRING BOOT
+            const formData = new FormData();
+            formData.append("productId", productId);
+            formData.append("orderId", orderId);
+            formData.append("userId", user.id);
+            formData.append("role", user.role || "USER");
+            formData.append("rating", rating);
+            formData.append("comment", comment);
+            
+            // Append each URL string individually
+            uploadedMediaUrls.forEach(url => formData.append("mediaUrls", url));
+
             await api.post('/reviews/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+
             showToast("Review submitted successfully!", "success");
             onSave();
             handleClose();
         } catch (err) {
             console.error(err);
-            const errorMsg = err.response?.data || err.message;
-            if (typeof errorMsg === 'string' && errorMsg.includes("File too large")) {
-                showToast(errorMsg, "error");
-            } else {
-                showToast("Failed to save review. Please compress your files.", "error");
-            }
+            showToast("Failed to save review. Please check your network connection.", "error");
+        } finally {
             setIsSubmitting(false);
         }
     };
@@ -77,15 +98,12 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
     return (
         <div
             className={`fixed inset-0 z-150 flex items-center justify-center p-4 sm:p-6 transition-all duration-300 ease-out ${isMounted ? 'bg-[#0B1120]/80 backdrop-blur-md opacity-100' : 'bg-transparent opacity-0'}`}
-            onClick={handleClose} // Clicking the dark background closes the modal
+            onClick={handleClose} 
         >
-
-            {/* Modal Container */}
             <div
-                onClick={(e) => e.stopPropagation()} // Prevents clicks inside the box from closing it
+                onClick={(e) => e.stopPropagation()} 
                 className={`bg-[#111827] border border-gray-800 rounded-3xl w-full max-w-lg shadow-[0_20px_60px_rgba(0,0,0,0.8)] relative flex flex-col max-h-[80vh] transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] transform ${isMounted ? 'scale-100 translate-y-0' : 'scale-95 translate-y-12'}`}
             >
-                {/* Floating Close Button */}
                 <button
                     onClick={handleClose}
                     className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-gray-800/80 text-gray-400 hover:text-white hover:bg-red-500 hover:rotate-90 transition-all duration-300 z-50 shadow-lg"
@@ -93,21 +111,16 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
 
-                {/* Scrollable Form Content */}
                 <div className="overflow-y-auto custom-scrollbar w-full relative z-10 rounded-3xl">
-
-                    {/* Decorative Background Glow */}
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-32 bg-blue-600/10 blur-[60px] pointer-events-none z-0"></div>
 
                     <form onSubmit={handleSubmit} className="p-6 sm:p-8 relative z-10 pt-10">
-
                         <div className="text-center mb-8">
                             <span className="text-4xl mb-3 block drop-shadow-[0_0_15px_rgba(59,130,246,0.3)]">✍️</span>
                             <h2 className="text-2xl font-black text-white tracking-wide">Rate Your Experience</h2>
                             <p className="text-gray-400 text-sm mt-1">Share your thoughts to help other buyers.</p>
                         </div>
 
-                        {/* Interactive Star Rating */}
                         <div className="flex justify-center gap-2 mb-8">
                             {[1, 2, 3, 4, 5].map((s) => (
                                 <button
@@ -126,7 +139,6 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
                             ))}
                         </div>
 
-                        {/* Review Textarea */}
                         <div className="mb-6">
                             <label className="block text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 ml-1">Your Review</label>
                             <textarea
@@ -138,10 +150,8 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
                             />
                         </div>
 
-                        {/* Custom File Upload Area */}
                         <div className="mb-8">
                             <label className="block text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 ml-1">Attach Media (Optional)</label>
-
                             <div className="relative group">
                                 <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-700 hover:border-blue-500/50 rounded-2xl cursor-pointer bg-[#0B1120] hover:bg-blue-600/5 transition-all duration-300">
                                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
@@ -152,7 +162,6 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
                                 </label>
                             </div>
 
-                            {/* File Previews / List */}
                             {files.length > 0 && (
                                 <div className="mt-4 flex flex-wrap gap-2">
                                     {files.map((file, idx) => (
@@ -171,7 +180,6 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
                             )}
                         </div>
 
-                        {/* Action Buttons */}
                         <div className="flex gap-4 pt-2">
                             <button
                                 type="button"
@@ -195,7 +203,7 @@ export default function ReviewModal({ productId, orderId, onClose, onSave }) {
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                         </svg>
-                                        Publishing...
+                                        Uploading...
                                     </>
                                 ) : (
                                     'Publish Review'
