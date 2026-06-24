@@ -20,9 +20,9 @@ export default function Footer() {
                 const res = await api.get('/profile/admin-contact');
                 if (res.data) {
                     setAdminContact({
-                        email: res.data.email || 'support@venkatincubators.com',
-                        phone: res.data.mobileNumber || '95022 55923',
-                        address: res.data.address ? res.data.address.replace(/,/g, ', ') : 'Hyderabad, Telangana, India'
+                        email: res.data.email || 'venkatfarmsandincubators@gmail.com',
+                        phone: res.data.mobileNumber || '63000829885',
+                        address: res.data.address ? res.data.address.replace(/,/g, ', ') : 'Vejendla, Guntur, Andhra Pradesh, India'
                     });
                 }
             } catch (err) {
