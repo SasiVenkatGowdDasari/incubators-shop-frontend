@@ -427,8 +427,8 @@ export default function ManageInventory() {
                                             onChange={(e) => setFormData({ ...formData, material: e.target.value })}
                                             className="w-full appearance-none bg-black/50 border border-gray-700 text-white rounded-lg p-3 pr-10 focus:outline-none focus:border-blue-500 transition cursor-pointer"
                                         >
-                                            <option value="Plywood" className="bg-gray-900 text-white">Plywood</option>
-                                            <option value="Thermacole" className="bg-gray-900 text-white">Thermacole</option>
+                                            <option value="Playwood" className="bg-gray-900 text-white">Playwood</option>
+                                            <option value="Thermocole" className="bg-gray-900 text-white">Thermocole</option>
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
